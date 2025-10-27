@@ -4,7 +4,7 @@
 # ===================================
 # ÉTAPE 1 : BUILD SÉCURISÉ AVEC MAVEN
 # ===================================
-FROM maven:3.9.9-eclipse-temurin-21 AS builder
+FROM maven:3.9.9-eclipse-temurin-17 AS builder
 
 # Définir le répertoire de travail
 WORKDIR /app
@@ -27,7 +27,7 @@ RUN mvn clean package -DskipTests -B --batch-mode --no-transfer-progress \
 # ===================================
 # ÉTAPE 2 : JRE DISTROLESS DEBIAN 12
 # ===================================
-FROM gcr.io/distroless/java21-debian12
+FROM gcr.io/distroless/java17-debian12
 
 # Définir le répertoire de travail
 WORKDIR /app
