@@ -33,7 +33,15 @@ RUN python -m venv /opt/venv && \
 # Exporter et installer les dépendances dans le venv
 RUN poetry export -f requirements.txt --output requirements.txt --without-hashes --only=main && \
     /opt/venv/bin/pip install --no-cache-dir -r requirements.txt && \
-    /opt/venv/bin/pip install --no-cache-dir uvicorn[standard]==0.24.0
+    /opt/venv/bin/pip install --no-cache-dir uvicorn[standard]==0.24.0 && \
+    # Supprimer les fichiers de test et cache Python pour réduire la taille
+    find /opt/venv -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true && \
+    find /opt/venv -type d -name "test" -exec rm -rf {} + 2>/dev/null || true && \
+    find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+    find /opt/venv -type f -name "*.pyc" -delete && \
+    find /opt/venv -type f -name "*.pyo" -delete && \
+    # Nettoyer le cache pip
+    rm -rf /opt/venv/lib/python3.11/site-packages/pip/_vendor/cachecontrol/__pycache__ 2>/dev/null || true
 
 # ===================================
 # ÉTAPE 2 : DISTROLESS PYTHON DEBIAN 12
