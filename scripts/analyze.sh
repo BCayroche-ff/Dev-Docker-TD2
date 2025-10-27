@@ -45,14 +45,21 @@ analyze_image() {
     
     # Scan des vulnérabilités
     echo -e "${YELLOW}   🔍 Scan sécurité en cours...${NC}"
-    local VULNERABILITIES=$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-        aquasec/trivy image --quiet --severity HIGH,CRITICAL $IMAGE 2>/dev/null | \
-        grep "Total:" | awk '{print $2}' || echo "0")
-    
-    if [ "$VULNERABILITIES" = "0" ] || [ -z "$VULNERABILITIES" ]; then
-        echo -e "${GREEN}   ✅ Aucune vulnérabilité critique${NC}"
+    local VULN_OUTPUT=$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        aquasec/trivy image --quiet --severity HIGH,CRITICAL $IMAGE 2>/dev/null | grep "Total:")
+
+    local CRITICAL_COUNT=$(echo "$VULN_OUTPUT" | grep -oP 'CRITICAL: \K\d+' | awk '{s+=$1} END {print s}')
+    local HIGH_COUNT=$(echo "$VULN_OUTPUT" | grep -oP 'HIGH: \K\d+' | awk '{s+=$1} END {print s}')
+
+    # Valeurs par défaut si vide
+    CRITICAL_COUNT=${CRITICAL_COUNT:-0}
+    HIGH_COUNT=${HIGH_COUNT:-0}
+    local TOTAL_VULNS=$((CRITICAL_COUNT + HIGH_COUNT))
+
+    if [ "$TOTAL_VULNS" = "0" ]; then
+        echo -e "${GREEN}   ✅ Aucune vulnérabilité HIGH/CRITICAL${NC}"
     else
-        echo -e "${RED}   ⚠️  Vulnérabilités critiques: $VULNERABILITIES${NC}"
+        echo -e "${RED}   ⚠️  Vulnérabilités: ${CRITICAL_COUNT} CRITICAL, ${HIGH_COUNT} HIGH (Total: ${TOTAL_VULNS})${NC}"
     fi
     
     # Informations sur l'OS
