@@ -1,0 +1,98 @@
+services:
+  # PostgreSQL Database
+  database:
+    image: postgres:15-alpine
+    container_name: greenwatt-database
+    environment:
+      POSTGRES_DB: greenwatt
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: GreenEnergy2024!
+    volumes:
+      # Persistent data storage
+      - postgres_data:/var/lib/postgresql/data
+      # Auto-initialize database with init.sql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - greenwatt-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d greenwatt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Redis Cache
+  cache:
+    image: redis:7-alpine
+    container_name: greenwatt-cache
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - greenwatt-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Backend API (Node.js/Express)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: greenwatt-backend:v1
+    container_name: greenwatt-backend
+    environment:
+      DATABASE_URL: postgresql://admin:GreenEnergy2024!@database:5432/greenwatt
+      REDIS_URL: redis://cache:6379
+      PORT: 5000
+      NODE_ENV: production
+    ports:
+      - "5000:5000"
+    networks:
+      - greenwatt-network
+    depends_on:
+      database:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend (React + NGINX)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_API_URL: http://localhost:5000
+    image: greenwatt-frontend:v1
+    container_name: greenwatt-frontend
+    ports:
+      - "3000:80"
+    networks:
+      - greenwatt-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+# Named volumes for data persistence
+volumes:
+  postgres_data:
+    name: greenwatt-postgres-data
+  redis_data:
+    name: greenwatt-redis-data
+
+# Custom network
+networks:
+  greenwatt-network:
+    name: greenwatt-network
+    driver: bridge
