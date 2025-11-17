@@ -1,0 +1,61 @@
+# ===========================================
+# PersistentVolumeClaims (PVC) - Stockage
+# ===========================================
+# Un PVC est une DEMANDE de stockage.
+#
+# COMMENT ÇA MARCHE ?
+# 1. Vous créez un PVC (ce fichier) : "Je veux 1Gi"
+# 2. Kubernetes cherche un PersistentVolume (PV) disponible
+# 3. Le PVC est "bound" (lié) au PV
+# 4. Votre Pod monte ce volume
+#
+# AVEC MINIKUBE :
+# - Minikube a un "storage-provisioner" activé
+# - Il crée automatiquement des PV locaux
+# - Pas besoin de créer manuellement les PV !
+#
+# ACCESSMODES :
+# - ReadWriteOnce (RWO) : 1 seul Pod peut lire/écrire
+# - ReadOnlyMany (ROX) : Plusieurs Pods peuvent lire
+# - ReadWriteMany (RWX) : Plusieurs Pods peuvent lire/écrire
+#
+# Pour PostgreSQL et Redis, on utilise RWO car :
+# - Une seule instance à la fois
+# - Évite la corruption de données
+# ===========================================
+
+---
+# PostgreSQL PVC - 1Gi
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: database
+spec:
+  accessModes:
+    - ReadWriteOnce  # Un seul Pod peut monter ce volume
+  resources:
+    requests:
+      storage: 1Gi  # 1 Gigabyte de stockage
+  # storageClassName: standard  # Optionnel, Minikube utilise 'standard' par défaut
+
+---
+# Redis PVC - 500Mi
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: cache
+spec:
+  accessModes:
+    - ReadWriteOnce  # Un seul Pod peut monter ce volume
+  resources:
+    requests:
+      storage: 500Mi  # 500 Megabytes de stockage
+  # storageClassName: standard  # Optionnel, Minikube utilise 'standard' par défaut

@@ -1,0 +1,152 @@
+# ===========================================
+# Backend Deployment - Node.js/Express API
+# ===========================================
+# Le backend est STATELESS (sans état local).
+# → On peut avoir PLUSIEURS instances (replicas: 3)
+#
+# HAUTE DISPONIBILITÉ :
+# - 3 replicas = Tolérance aux pannes
+# - Si 1 Pod crash, 2 autres continuent
+# - Load balancing automatique par le Service
+# - Zero-downtime deployments (rolling update)
+#
+# VARIABLES D'ENVIRONNEMENT :
+# - ConfigMap : PORT, NODE_ENV (non-sensible)
+# - Secret : DATABASE_URL, REDIS_URL (sensible)
+#
+# PROBES :
+# - Liveness : GET /api/health (uptime)
+# - Readiness : GET /api/ready (DB + Redis connectés)
+#
+# RESOURCE LIMITS (du PDF) :
+# - Requests : CPU 200m, Memory 256Mi
+# - Limits : CPU 500m, Memory 512Mi
+#
+# ===========================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: backend
+spec:
+  # === REPLICAS ===
+  replicas: 3
+
+  # === STRATEGY ===
+  # RollingUpdate : Met à jour 1 Pod à la fois (0 downtime)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # Peut créer 1 Pod supplémentaire pendant l'update
+      maxUnavailable: 1  # Peut avoir 1 Pod indisponible pendant l'update
+
+  # === SELECTOR ===
+  selector:
+    matchLabels:
+      app: greenwatt
+      component: backend
+
+  # === POD TEMPLATE ===
+  template:
+    metadata:
+      labels:
+        app: greenwatt
+        component: backend
+    spec:
+      containers:
+      - name: backend
+        image: greenwatt-backend:v1
+        imagePullPolicy: IfNotPresent  # Image locale (Minikube)
+
+        # === PORTS ===
+        ports:
+        - containerPort: 5000
+          name: http
+          protocol: TCP
+
+        # === VARIABLES D'ENVIRONNEMENT ===
+        env:
+        # Depuis ConfigMap (non-sensible)
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: greenwatt-config
+              key: PORT
+
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: greenwatt-config
+              key: NODE_ENV
+
+        # Depuis Secret (sensible)
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: greenwatt-secrets
+              key: DATABASE_URL
+
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: greenwatt-secrets
+              key: REDIS_URL
+
+        # === RESOURCE LIMITS ===
+        # Spécifications du PDF
+        resources:
+          requests:
+            memory: "256Mi"  # Minimum garanti
+            cpu: "200m"      # 0.2 CPU (20% d'un core)
+          limits:
+            memory: "512Mi"  # Maximum autorisé
+            cpu: "500m"      # 0.5 CPU (50% d'un core)
+
+        # === LIVENESS PROBE ===
+        # Vérifie que le backend est vivant
+        # Endpoint : GET /api/health (retourne uptime)
+        # Si fail → K8s REDÉMARRE le Pod
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+            scheme: HTTP
+          initialDelaySeconds: 30  # Attendre 30s (Node.js startup)
+          periodSeconds: 30        # Vérifier toutes les 30s
+          timeoutSeconds: 5        # Timeout après 5s
+          failureThreshold: 3      # Redémarrer après 3 échecs
+          successThreshold: 1      # 1 succès = healthy
+
+        # === READINESS PROBE ===
+        # Vérifie que le backend est prêt (DB + Redis connectés)
+        # Endpoint : GET /api/ready (teste PostgreSQL et Redis)
+        # Si fail → K8s RETIRE du Service (plus de trafic)
+        readinessProbe:
+          httpGet:
+            path: /api/ready
+            port: 5000
+            scheme: HTTP
+          initialDelaySeconds: 10  # Attendre 10s
+          periodSeconds: 10        # Vérifier toutes les 10s
+          timeoutSeconds: 5        # Timeout après 5s
+          failureThreshold: 3      # Retirer après 3 échecs
+          successThreshold: 1      # 1 succès = ready
+
+      # === ANTI-AFFINITY (optionnel mais recommandé) ===
+      # Distribue les Pods sur différents nœuds si possible
+      # Dans Minikube (1 nœud), ceci n'a pas d'effet
+      # Mais c'est une bonne pratique pour un vrai cluster
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: greenwatt
+                  component: backend
+              topologyKey: kubernetes.io/hostname

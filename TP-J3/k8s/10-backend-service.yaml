@@ -1,0 +1,48 @@
+# ===========================================
+# Backend Service
+# ===========================================
+# Service ClusterIP qui load balance entre les 3 Pods backend.
+#
+# LOAD BALANCING :
+# - Le Service distribue le trafic entre les 3 replicas
+# - Algorithme : Round-robin par défaut
+# - Seuls les Pods "Ready" reçoivent du trafic
+#
+# DNS RESOLUTION :
+# - backend-service.greenwatt.svc.cluster.local
+# - Forme courte : backend-service
+#
+# UTILISÉ PAR :
+# - Frontend : fetch('http://backend-service:5000/api/...')
+# - Ingress (bonus) : Routing /api → backend-service
+#
+# ===========================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: backend
+spec:
+  type: ClusterIP  # Interne uniquement
+  selector:
+    app: greenwatt
+    component: backend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 5000        # Port du Service
+    targetPort: 5000  # Port des Pods backend
+
+  # === SESSION AFFINITY (optionnel) ===
+  # Par défaut, chaque requête peut aller vers un Pod différent.
+  # Avec sessionAffinity: ClientIP, les requêtes d'une même IP
+  # vont toujours vers le même Pod.
+  # Pour notre API stateless, pas nécessaire.
+  # sessionAffinity: ClientIP
+  # sessionAffinityConfig:
+  #   clientIP:
+  #     timeoutSeconds: 10800  # 3 heures

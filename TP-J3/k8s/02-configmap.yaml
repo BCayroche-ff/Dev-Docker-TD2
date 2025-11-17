@@ -1,0 +1,37 @@
+# ===========================================
+# ConfigMap - Configuration non-sensible
+# ===========================================
+# Stocke les variables d'environnement NON-SENSIBLES.
+#
+# POURQUOI SÉPARER CONFIG ET CODE ?
+# - Réutilisabilité : Plusieurs Deployments peuvent utiliser
+#   le même ConfigMap
+# - Versionning : On peut changer la config sans reconstruire
+#   les images Docker
+# - Organisation : Séparation claire entre config et secrets
+#
+# ⚠️ NE JAMAIS mettre de mots de passe ici !
+#    Utilisez Secrets pour les données sensibles.
+# ===========================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: greenwatt-config
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+data:
+  # Backend configuration
+  PORT: "5000"
+  NODE_ENV: "production"
+
+  # Database configuration (non-sensitive)
+  POSTGRES_DB: "greenwatt"
+  POSTGRES_USER: "admin"
+  DB_HOST: "postgres-service"  # ⚠️ Nom du Service, pas du Pod !
+  DB_PORT: "5432"
+
+  # Redis configuration
+  REDIS_HOST: "redis-service"  # ⚠️ Nom du Service, pas du Pod !
+  REDIS_PORT: "6379"

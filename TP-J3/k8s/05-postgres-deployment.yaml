@@ -1,0 +1,145 @@
+# ===========================================
+# PostgreSQL Deployment
+# ===========================================
+# Un Deployment crée et gère des Pods.
+#
+# POURQUOI replicas: 1 ?
+# - PostgreSQL est STATEFUL (a un état)
+# - On ne peut pas simplement dupliquer une base de données
+# - Pour la haute disponibilité, il faut :
+#   * PostgreSQL Replication (master/slave)
+#   * StatefulSet (pas Deployment)
+#   * Operators (comme Zalando Postgres Operator)
+#
+# VOLUMES :
+# - postgres-storage : PVC pour les données (persistant)
+# - init-script : ConfigMap avec init.sql (à créer manuellement)
+#
+# PROBES :
+# - Liveness : Vérifie que PostgreSQL répond
+# - Readiness : Vérifie que PostgreSQL est prêt à accepter des connexions
+#
+# ===========================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: database
+spec:
+  replicas: 1  # ⚠️ Ne PAS augmenter ! PostgreSQL est stateful
+  selector:
+    matchLabels:
+      app: greenwatt
+      component: database
+  template:
+    metadata:
+      labels:
+        app: greenwatt
+        component: database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        imagePullPolicy: IfNotPresent
+
+        # === PORTS ===
+        ports:
+        - containerPort: 5432
+          name: postgres
+          protocol: TCP
+
+        # === VARIABLES D'ENVIRONNEMENT ===
+        env:
+        # Depuis ConfigMap
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: greenwatt-config
+              key: POSTGRES_DB
+
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: greenwatt-config
+              key: POSTGRES_USER
+
+        # Depuis Secret
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: greenwatt-secrets
+              key: POSTGRES_PASSWORD
+
+        # === VOLUMES ===
+        volumeMounts:
+        # Données PostgreSQL (persistant)
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+          subPath: postgres  # Évite les problèmes avec lost+found
+
+        # Script d'initialisation (init.sql)
+        # ⚠️ Nécessite de créer le ConfigMap manuellement :
+        # kubectl create configmap postgres-init-script \
+        #   --from-file=init.sql=database/init.sql \
+        #   -n greenwatt
+        - name: init-script
+          mountPath: /docker-entrypoint-initdb.d
+          readOnly: true
+
+        # === RESOURCE LIMITS ===
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        # === LIVENESS PROBE ===
+        # Vérifie que PostgreSQL est vivant
+        # Si fail → K8s REDÉMARRE le Pod
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          initialDelaySeconds: 30  # Attendre 30s avant le 1er check
+          periodSeconds: 10         # Vérifier toutes les 10s
+          timeoutSeconds: 5         # Timeout après 5s
+          failureThreshold: 3       # Redémarrer après 3 échecs
+
+        # === READINESS PROBE ===
+        # Vérifie que PostgreSQL est prêt à accepter des connexions
+        # Si fail → K8s RETIRE le Pod du Service (plus de trafic)
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          initialDelaySeconds: 10  # Attendre 10s avant le 1er check
+          periodSeconds: 5          # Vérifier toutes les 5s
+          timeoutSeconds: 3         # Timeout après 3s
+          failureThreshold: 3       # Retirer du service après 3 échecs
+
+      # === VOLUMES (définitions) ===
+      volumes:
+      # Volume depuis PVC (stockage persistant)
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+
+      # Volume depuis ConfigMap (init.sql)
+      # ⚠️ Ce ConfigMap doit être créé MANUELLEMENT avant l'apply :
+      # kubectl create configmap postgres-init-script \
+      #   --from-file=init.sql=database/init.sql \
+      #   -n greenwatt
+      - name: init-script
+        configMap:
+          name: postgres-init-script
+          optional: true  # Ne pas échouer si le ConfigMap n'existe pas encore

@@ -1,0 +1,19 @@
+# ===========================================
+# Namespace - Isolation des ressources
+# ===========================================
+# Un namespace est comme un "dossier" qui contient
+# toutes les ressources de l'application GreenWatt.
+# Cela permet d'isoler cette application des autres
+# qui pourraient tourner sur le même cluster.
+#
+# Sans namespace, tout irait dans "default".
+# ===========================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: greenwatt
+  labels:
+    app: greenwatt
+    environment: production
+    managed-by: kubectl

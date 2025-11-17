@@ -1,0 +1,56 @@
+# ===========================================
+# Frontend Service - NodePort
+# ===========================================
+# Service de type NodePort pour exposer le frontend
+# à l'extérieur du cluster Kubernetes.
+#
+# TYPES DE SERVICE :
+# 1. ClusterIP : Interne uniquement (DB, Redis, Backend)
+# 2. NodePort : Expose sur un port du nœud (Frontend)
+# 3. LoadBalancer : Cloud uniquement (AWS, GCP, Azure)
+#
+# POURQUOI NodePort ?
+# - Minikube n'a pas de cloud provider
+# - LoadBalancer resterait "pending" indéfiniment
+# - NodePort fonctionne sur Minikube !
+#
+# ACCÈS :
+# - Via minikube : minikube service frontend-service -n greenwatt
+# - Via port-forward : kubectl port-forward svc/frontend-service 3000:80 -n greenwatt
+# - Via NodePort : http://<minikube-ip>:<nodePort>
+#
+# PORT RANGE :
+# - NodePort auto-assigné entre 30000-32767
+# - Ou spécifié manuellement : nodePort: 30080
+#
+# ===========================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: frontend
+spec:
+  # === TYPE ===
+  type: NodePort  # Expose sur un port du nœud Minikube
+
+  # === SELECTOR ===
+  selector:
+    app: greenwatt
+    component: frontend
+
+  # === PORTS ===
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80          # Port du Service (interne)
+    targetPort: 80    # Port du conteneur NGINX
+    # nodePort: 30080  # Optionnel : forcer un port spécifique (30000-32767)
+                       # Si omis, K8s assigne automatiquement
+
+  # === SESSION AFFINITY (optionnel) ===
+  # Pour une SPA React, pas nécessaire
+  # sessionAffinity: ClientIP

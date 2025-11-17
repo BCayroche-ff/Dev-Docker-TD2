@@ -1,0 +1,57 @@
+# ===========================================
+# PostgreSQL Service
+# ===========================================
+# Un Service est une IP STABLE et un LOAD BALANCER
+# pour accéder aux Pods.
+#
+# POURQUOI BESOIN D'UN SERVICE ?
+# - Les Pods ont des IPs ÉPHÉMÈRES (changent au redémarrage)
+# - Le Service a une IP FIXE
+# - Le Service crée un enregistrement DNS :
+#   postgres-service.greenwatt.svc.cluster.local → IP du Service
+#
+# TYPES DE SERVICE :
+# - ClusterIP (défaut) : Accessible UNIQUEMENT dans le cluster
+# - NodePort : Expose sur un port du nœud (30000-32767)
+# - LoadBalancer : Crée un load balancer externe (cloud uniquement)
+#
+# Pour PostgreSQL, on utilise ClusterIP car :
+# - Base de données = backend uniquement
+# - Pas besoin d'accès externe
+# - Sécurité : pas exposé sur Internet
+#
+# DNS RESOLUTION :
+# Dans le namespace greenwatt :
+#   postgres-service → 10.96.x.x (IP du Service)
+#
+# Depuis un autre namespace :
+#   postgres-service.greenwatt.svc.cluster.local
+#
+# ===========================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: database
+spec:
+  # Type de Service
+  type: ClusterIP  # Interne uniquement (pas d'accès externe)
+
+  # Selector : Comment trouver les Pods à load balancer
+  # ⚠️ Doit correspondre aux labels du Deployment !
+  selector:
+    app: greenwatt
+    component: database
+
+  # Ports exposés
+  ports:
+  - name: postgres
+    protocol: TCP
+    port: 5432        # Port du Service (ce que les clients utilisent)
+    targetPort: 5432  # Port du conteneur (où PostgreSQL écoute)
+
+  # sessionAffinity: ClientIP  # Optionnel : stick les connexions au même Pod

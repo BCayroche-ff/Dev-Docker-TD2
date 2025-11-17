@@ -1,0 +1,105 @@
+# ===========================================
+# Redis Deployment
+# ===========================================
+# Redis est un cache en mémoire avec persistance optionnelle.
+#
+# POURQUOI Redis ?
+# - Cache les requêtes fréquentes (ex: /api/installations)
+# - Réduit la charge sur PostgreSQL
+# - Réponses ultra-rapides (< 1ms)
+#
+# PERSISTANCE :
+# - AOF (Append-Only File) : redis-server --appendonly yes
+# - Sauvegarde incrémentale de toutes les commandes
+# - Permet de reconstruire l'état après redémarrage
+#
+# PROBES :
+# - redis-cli ping → PONG
+# - Simple et efficace !
+#
+# ===========================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: cache
+spec:
+  replicas: 1  # Redis standalone (pas de cluster pour ce TP)
+  selector:
+    matchLabels:
+      app: greenwatt
+      component: cache
+  template:
+    metadata:
+      labels:
+        app: greenwatt
+        component: cache
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        imagePullPolicy: IfNotPresent
+
+        # === COMMANDE CUSTOM ===
+        # --appendonly yes : Active la persistance AOF
+        command:
+        - redis-server
+        - --appendonly
+        - "yes"
+
+        # === PORTS ===
+        ports:
+        - containerPort: 6379
+          name: redis
+          protocol: TCP
+
+        # === VOLUMES ===
+        volumeMounts:
+        - name: redis-storage
+          mountPath: /data  # Redis sauvegarde AOF ici
+
+        # === RESOURCE LIMITS ===
+        # Redis est léger en CPU mais peut consommer de la RAM
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+
+        # === LIVENESS PROBE ===
+        # Vérifie que Redis répond
+        # Si fail → K8s redémarre le Pod
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        # === READINESS PROBE ===
+        # Vérifie que Redis est prêt
+        # Si fail → K8s retire du Service
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+
+      # === VOLUMES (définitions) ===
+      volumes:
+      - name: redis-storage
+        persistentVolumeClaim:
+          claimName: redis-pvc

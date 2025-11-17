@@ -1,0 +1,116 @@
+# ===========================================
+# Frontend Deployment - React + NGINX
+# ===========================================
+# Le frontend est STATIQUE (NGINX sert des fichiers HTML/JS/CSS).
+# → NGINX est très léger et rapide
+# → 2 replicas suffisent pour la HA
+#
+# PARTICULARITÉS :
+# - Pas de variables d'env runtime (REACT_APP_* baked-in au build)
+# - Probes simples (juste vérifier que NGINX répond)
+# - Resource limits légers (NGINX consomme peu)
+#
+# ⚠️ NOTE SUR REACT_APP_API_URL :
+# L'image a été buildée avec REACT_APP_API_URL=http://localhost:5000
+# Cela fonctionne en Docker Compose (backend exposé sur localhost:5000).
+#
+# En Kubernetes, depuis votre navigateur :
+# - localhost:5000 → VOTRE MACHINE (pas le backend K8s)
+# - Pour tester, utilisez port-forward :
+#   kubectl port-forward -n greenwatt svc/backend-service 5000:5000
+#
+# Pour une vraie solution :
+# - Utilisez Ingress (tout sous une seule URL)
+# - Ou rebuild avec l'URL publique
+#
+# ===========================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: frontend
+spec:
+  replicas: 2  # 2 replicas (NGINX est très performant)
+
+  # === STRATEGY ===
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Toujours au moins 2 Pods disponibles
+
+  # === SELECTOR ===
+  selector:
+    matchLabels:
+      app: greenwatt
+      component: frontend
+
+  # === POD TEMPLATE ===
+  template:
+    metadata:
+      labels:
+        app: greenwatt
+        component: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: greenwatt-frontend:v1
+        imagePullPolicy: IfNotPresent  # Image locale (Minikube)
+
+        # === PORTS ===
+        ports:
+        - containerPort: 80
+          name: http
+          protocol: TCP
+
+        # === RESOURCE LIMITS ===
+        # NGINX est très léger (sert juste des fichiers statiques)
+        resources:
+          requests:
+            memory: "64Mi"   # Minimum
+            cpu: "50m"       # 0.05 CPU (5%)
+          limits:
+            memory: "128Mi"  # Maximum
+            cpu: "100m"      # 0.1 CPU (10%)
+
+        # === LIVENESS PROBE ===
+        # Vérifie que NGINX répond
+        # Si fail → K8s redémarre le Pod
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        # === READINESS PROBE ===
+        # Vérifie que NGINX est prêt
+        # Si fail → K8s retire du Service
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+
+      # === ANTI-AFFINITY (optionnel) ===
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: greenwatt
+                  component: frontend
+              topologyKey: kubernetes.io/hostname
