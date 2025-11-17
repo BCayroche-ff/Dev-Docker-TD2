@@ -1,0 +1,38 @@
+# .trivyignore - CVE système Debian 12 sans correctif disponible
+#
+# Ces vulnérabilités proviennent de la base Debian 12 (bookworm) utilisée
+# par les images distroless Google. Elles ne peuvent PAS être corrigées car :
+# - Marquées "will_not_fix" ou "affected" par Debian Security
+# - Aucun correctif disponible dans les dépôts Debian 12
+# - Google distroless suit les mises à jour de Debian
+#
+# Stratégie de sécurité :
+# ✅ Toutes les vulnérabilités APPLICATIVES ont été corrigées
+# ✅ Les dépendances Python/Java/Node sont à jour
+# ❌ Ces CVE système persistent jusqu'à correctif Debian upstream
+#
+# Pour une vraie production : évaluer le risque réel de chaque CVE
+# selon le contexte d'utilisation (exposition, données, etc.)
+
+# === PYTHON & JAVA ===
+# zlib1g - CVE-2023-45853 - Integer overflow in zipOpenNewFileInZip4_6
+# Status: will_not_fix par Debian
+# Impact: Nécessite un fichier ZIP malformé spécifique
+CVE-2023-45853
+
+# === PYTHON UNIQUEMENT ===
+# libsqlite3-0 - CVE-2025-7458 - SQLite integer overflow
+# Status: affected, pas de fix Debian 12
+# Impact: Exploitation complexe, nécessite contrôle des requêtes SQL
+CVE-2025-7458
+
+# libpython3.11 - CVE-2025-8194 - Infinite loop parsing tarfile
+# Status: affected, pas de fix Debian 12
+# Impact: DoS possible si parsing de tarfiles non-fiables
+CVE-2025-8194
+
+# === JAVA UNIQUEMENT ===
+# libharfbuzz0b - CVE-2023-25193 - O(n²) growth via consecutive marks
+# Status: affected, pas de fix Debian 12
+# Impact: DoS possible avec polices malformées
+CVE-2023-25193
