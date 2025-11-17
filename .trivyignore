@@ -31,6 +31,11 @@ CVE-2025-7458
 # Impact: DoS possible si parsing de tarfiles non-fiables
 CVE-2025-8194
 
+# python-ecdsa - CVE-2024-23342 - Minerva timing attack
+# Status: affected, version 0.19.1 (dernière dispo), pas de 0.19.2
+# Impact: Attaque par canal auxiliaire timing, nécessite accès local
+CVE-2024-23342
+
 # === JAVA UNIQUEMENT ===
 # libharfbuzz0b - CVE-2023-25193 - O(n²) growth via consecutive marks
 # Status: affected, pas de fix Debian 12
