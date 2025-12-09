@@ -132,6 +132,10 @@ install_argocd() {
     log_info "Installation des composants ArgoCD..."
     kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
+    # Creer le secret Redis requis par ArgoCD v3.x (mot de passe non-vide obligatoire)
+    log_info "Creation du secret argocd-redis..."
+    kubectl create secret generic argocd-redis --from-literal=auth="argocd-redis-secret" -n argocd 2>/dev/null || true
+
     # Attendre que les pods soient prets
     log_info "Attente du demarrage des pods ArgoCD..."
     kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
