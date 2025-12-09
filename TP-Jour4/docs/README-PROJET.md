@@ -43,8 +43,8 @@ Plateforme de monitoring temps reel pour 3 fermes solaires photovoltaiques, depl
 # Prerequis: Docker, kubectl, minikube
 
 # 1. Cloner le repository
-git clone https://github.com/YOUR_USERNAME/solar-monitoring-gitops.git
-cd solar-monitoring-gitops
+https://github.com/BCayroche-ff/Dev-Docker-TD2.git
+cd TP-Jour4
 
 # 2. Lancer l'installation automatique
 ./scripts/setup.sh
@@ -53,6 +53,9 @@ cd solar-monitoring-gitops
 kubectl port-forward svc/grafana -n solar-prod 3000:3000
 kubectl port-forward svc/prometheus -n solar-prod 9090:9090
 kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+Ou bien démarrer le script demo:
+./scripts/demo.sh
 ```
 
 ## Acces aux services
