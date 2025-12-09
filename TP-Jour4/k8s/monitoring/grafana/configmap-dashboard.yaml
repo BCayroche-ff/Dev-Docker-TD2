@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  labels:
+    app: grafana
+binaryData: {}
+data:
+  solar-dashboard.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "max": 5080,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "orange", "value": 2540 },
+                  { "color": "green", "value": 4064 }
+                ]
+              },
+              "unit": "kilowatt"
+            }
+          },
+          "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+          "id": 1,
+          "options": { "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(solar_power_production_kw)", "legendFormat": "Total" }],
+          "title": "1. Production Totale",
+          "type": "gauge"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "kilowatt" } },
+          "gridPos": { "h": 8, "w": 12, "x": 6, "y": 0 },
+          "id": 2,
+          "targets": [{ "expr": "solar_power_production_kw", "legendFormat": "{{farm}}" }],
+          "title": "2. Historique Production",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "celsius" } },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "id": 3,
+          "targets": [{ "expr": "solar_panel_temperature_celsius", "legendFormat": "{{farm}}" }],
+          "title": "3. Temperature Panneaux",
+          "type": "heatmap"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "orange", "value": 99 },
+                  { "color": "green", "value": 99.5 }
+                ]
+              },
+              "unit": "percent"
+            }
+          },
+          "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+          "id": 4,
+          "targets": [{ "expr": "avg(solar_availability_percent)", "legendFormat": "SLO" }],
+          "title": "4. Disponibilite SLO",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "currencyEUR" } },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "id": 5,
+          "targets": [{ "expr": "solar_daily_revenue_euros", "legendFormat": "{{farm}}" }],
+          "title": "5. Revenus Journaliers",
+          "type": "barchart"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+          "id": 6,
+          "targets": [{ "expr": "ALERTS{alertstate=\"firing\"}", "format": "table", "instant": true }],
+          "title": "6. Alertes Actives",
+          "type": "table"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "tags": ["solar", "monitoring"],
+      "time": { "from": "now-6h", "to": "now" },
+      "title": "Solar Monitoring Dashboard",
+      "uid": "solar-monitoring"
+    }

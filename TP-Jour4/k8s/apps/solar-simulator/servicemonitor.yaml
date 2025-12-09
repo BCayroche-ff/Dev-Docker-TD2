@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: solar-simulator
+  labels:
+    app: solar-simulator
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: solar-simulator
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - solar-prod

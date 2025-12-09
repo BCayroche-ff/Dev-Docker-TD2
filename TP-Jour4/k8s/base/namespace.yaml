@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: solar-prod
+  labels:
+    app.kubernetes.io/name: solar-monitoring
+    app.kubernetes.io/part-of: solar-monitoring

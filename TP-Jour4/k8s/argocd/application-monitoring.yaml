@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: solar-monitoring
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # IMPORTANT: Remplacer par votre URL de repository GitHub
+    repoURL: https://github.com/BCayroche-ff/Dev-Docker-TD2.git
+    targetRevision: TD-J4
+    path: TP-Jour4/k8s/monitoring
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: solar-prod
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 3

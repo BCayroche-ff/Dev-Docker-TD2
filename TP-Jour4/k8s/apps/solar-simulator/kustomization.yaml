@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: solar-prod
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - configmap.yaml
+  # servicemonitor.yaml - Requires Prometheus Operator, using annotations instead
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: solar-monitoring
+
+images:
+  - name: solar-simulator
+    newTag: latest

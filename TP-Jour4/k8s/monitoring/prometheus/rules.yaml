@@ -1,0 +1,144 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  labels:
+    app: prometheus
+data:
+  solar-alerts.yml: |
+    groups:
+      - name: solar_critical_alerts
+        interval: 30s
+        rules:
+
+          # ===========================================
+          # ALERTE 1: Surchauffe panneau (> 65C pendant 10 min)
+          # ===========================================
+          - alert: SolarPanelOverheating
+            expr: solar_panel_temperature_celsius > 65
+            for: 10m
+            labels:
+              severity: critical
+              component: panel
+              team: operations
+            annotations:
+              summary: "Panneau en surchauffe sur {{ $labels.farm }}"
+              description: "La temperature des panneaux de la ferme {{ $labels.farm }} est de {{ $value | printf \"%.1f\" }}C, depassant le seuil critique de 65C depuis plus de 10 minutes."
+              runbook_url: "https://wiki.internal/runbooks/solar-overheat"
+              dashboard_url: "http://grafana:3000/d/solar/solar-monitoring?var-farm={{ $labels.farm }}"
+
+          # ===========================================
+          # ALERTE 2: Panne onduleur (status = 0)
+          # ===========================================
+          - alert: InverterDown
+            expr: solar_inverter_status == 0
+            for: 1m
+            labels:
+              severity: critical
+              component: inverter
+              team: maintenance
+            annotations:
+              summary: "Onduleur {{ $labels.inverter_id }} en panne sur {{ $labels.farm }}"
+              description: "L'onduleur {{ $labels.inverter_id }} de la ferme {{ $labels.farm }} est hors service. Impact estime: -25% a -33% de production."
+              runbook_url: "https://wiki.internal/runbooks/inverter-failure"
+              action: "Verifier l'alimentation et les fusibles de l'onduleur. Contacter le support technique si necessaire."
+
+          # ===========================================
+          # ALERTE 3: Production anormalement basse (< 50% du theorique)
+          # ===========================================
+          - alert: LowProductionEfficiency
+            expr: |
+              (solar_power_production_kw / solar_power_theoretical_kw) < 0.5
+              and solar_irradiance_wm2 > 200
+              and solar_power_theoretical_kw > 0
+            for: 15m
+            labels:
+              severity: warning
+              component: production
+              team: operations
+            annotations:
+              summary: "Production < 50% du theorique sur {{ $labels.farm }}"
+              description: "La ferme {{ $labels.farm }} produit {{ $value | printf \"%.0f\" }}% de sa capacite theorique malgre une irradiance de {{ with printf \"solar_irradiance_wm2{farm='%s'}\" $labels.farm | query }}{{ . | first | value | printf \"%.0f\" }}{{ end }} W/m2."
+              possible_causes: "Ombrage partiel, panneaux sales, degradation, probleme electrique"
+
+          # ===========================================
+          # ALERTE 4: Perte de donnees capteur (absence > 5 min)
+          # ===========================================
+          - alert: SensorDataLoss
+            expr: |
+              (time() - solar_last_update_timestamp) > 300
+              or absent(solar_power_production_kw{farm=~".+"})
+            for: 5m
+            labels:
+              severity: warning
+              component: sensor
+              team: operations
+            annotations:
+              summary: "Perte de donnees capteur"
+              description: "Aucune donnee n'a ete recue depuis plus de 5 minutes. Verifier la connectivite du simulateur et l'etat des capteurs."
+              runbook_url: "https://wiki.internal/runbooks/sensor-loss"
+
+          # ===========================================
+          # ALERTE 5: SLO breach - Disponibilite < 99.5%
+          # ===========================================
+          - alert: SLOAvailabilityBreach
+            expr: solar_availability_percent < 99.5
+            for: 5m
+            labels:
+              severity: critical
+              component: slo
+              team: sre
+            annotations:
+              summary: "SLO Disponibilite non respecte sur {{ $labels.farm }}"
+              description: "La disponibilite de la ferme {{ $labels.farm }} est de {{ $value | printf \"%.2f\" }}%, en dessous de l'objectif SLO de 99.5%."
+              impact: "Perte de revenus estimee et risque de penalites contractuelles."
+              slo_target: "99.5%"
+
+      - name: solar_warning_alerts
+        interval: 60s
+        rules:
+
+          # Alerte complementaire: Temperature elevee (pre-surchauffe)
+          - alert: SolarPanelHighTemperature
+            expr: solar_panel_temperature_celsius > 55 and solar_panel_temperature_celsius <= 65
+            for: 30m
+            labels:
+              severity: warning
+              component: panel
+            annotations:
+              summary: "Temperature elevee sur {{ $labels.farm }}"
+              description: "La temperature des panneaux ({{ $value | printf \"%.1f\" }}C) approche du seuil critique. Surveiller l'evolution."
+
+          # Alerte complementaire: Baisse de rendement
+          - alert: EfficiencyDegradation
+            expr: solar_efficiency_percent < 15
+            for: 1h
+            labels:
+              severity: warning
+              component: efficiency
+            annotations:
+              summary: "Rendement degrade sur {{ $labels.farm }}"
+              description: "Le rendement de {{ $labels.farm }} est de {{ $value | printf \"%.1f\" }}%, en dessous du seuil normal de 18%."
+
+      - name: solar_recording_rules
+        interval: 30s
+        rules:
+
+          # Regles d'enregistrement pour agregations
+          - record: solar:total_power_production_kw
+            expr: sum(solar_power_production_kw)
+
+          - record: solar:total_theoretical_power_kw
+            expr: sum(solar_power_theoretical_kw)
+
+          - record: solar:global_efficiency_percent
+            expr: (sum(solar_power_production_kw) / sum(solar_power_theoretical_kw)) * 100
+
+          - record: solar:total_daily_revenue_euros
+            expr: sum(solar_daily_revenue_euros)
+
+          - record: solar:average_panel_temperature
+            expr: avg(solar_panel_temperature_celsius)
+
+          - record: solar:farms_with_anomalies
+            expr: count(solar_anomaly_active{type!="NORMAL"} == 1)
