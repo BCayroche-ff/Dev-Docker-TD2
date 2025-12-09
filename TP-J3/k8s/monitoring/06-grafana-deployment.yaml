@@ -113,19 +113,16 @@ spec:
           mountPath: /etc/grafana/provisioning/datasources
           readOnly: true
 
-        # Dashboards provisioning
+        # Dashboards provisioning (provider config)
         - name: grafana-dashboards-provider
           mountPath: /etc/grafana/provisioning/dashboards
           readOnly: true
 
-        # Dashboard files
+        # Dashboard JSON files - mounted in a subdirectory to not conflict with grafana-storage
         - name: grafana-dashboards
           mountPath: /var/lib/grafana/dashboards
           readOnly: true
-
-        # Persistent storage for Grafana data (users, settings, etc.)
-        - name: grafana-storage
-          mountPath: /var/lib/grafana
+          subPath: ""
 
       # === VOLUMES ===
       volumes:
@@ -142,14 +139,13 @@ spec:
           - key: dashboards.yaml
             path: dashboards.yaml
 
-      # Dashboard JSON files
+      # Dashboard JSON files (only the JSON, not the provider)
       - name: grafana-dashboards
         configMap:
           name: grafana-dashboards
-
-      # Storage for Grafana data
-      - name: grafana-storage
-        emptyDir: {}  # Pour le TP (production = PVC)
+          items:
+          - key: greenwatt-dashboard.json
+            path: greenwatt-dashboard.json
         # persistentVolumeClaim:
         #   claimName: grafana-pvc
 

@@ -5,8 +5,8 @@ global:
 backend:
   replicas: 1
   image:
-    tag: "dev"
-    pullPolicy: Always
+    tag: "v1"
+    pullPolicy: IfNotPresent
 
   resources:
     requests:
@@ -19,8 +19,8 @@ backend:
 frontend:
   replicas: 1
   image:
-    tag: "dev"
-    pullPolicy: Always
+    tag: "v1"
+    pullPolicy: IfNotPresent
 
 postgres:
   persistence:

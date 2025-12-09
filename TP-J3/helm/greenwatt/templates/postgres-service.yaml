@@ -1,0 +1,18 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: {{ include "greenwatt.namespace" . }}
+  labels:
+    {{- include "greenwatt.postgres.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.postgres.service.type }}
+  selector:
+    {{- include "greenwatt.postgres.selectorLabels" . | nindent 4 }}
+  ports:
+  - name: postgres
+    protocol: TCP
+    port: {{ .Values.postgres.service.port }}
+    targetPort: 5432
+{{- end }}
