@@ -157,3 +157,21 @@ argocd app sync solar-simulator
 | Grafana | 100-200m | 256-512Mi | 2GB | ~8 EUR |
 | AlertManager | 50-100m | 64-128Mi | 1GB | ~3 EUR |
 | **TOTAL** | | | | **~35 EUR** |
+
+*Hypotheses: Cloud provider standard, 0.05 EUR/CPU-hour, 0.01 EUR/GB-hour*
+
+### Optimisations proposees
+
+1. **Reduction de la retention Prometheus** (Economie: ~4 EUR/mois)
+   - Avant: retention 15 jours par defaut
+   - Apres: retention 7 jours (`--storage.tsdb.retention.time=7d`)
+   - Justification: Les donnees historiques peuvent etre archivees dans un stockage objet moins couteux
+
+2. **Right-sizing des ressources simulateur** (Economie: ~2 EUR/mois)
+   - Avant: `requests.cpu: 200m`, `limits.cpu: 400m`
+   - Apres: `requests.cpu: 100m`, `limits.cpu: 200m`
+   - Justification: Apres analyse des metriques, le simulateur utilise en moyenne 50m CPU
+
+3. **Activation de la compression TSDB** (Economie: ~1.50 EUR/mois)
+   - Configuration: `--storage.tsdb.wal-compression`
+   - Justification: Reduction de 30-40% du stockage sans impact sur les performances de lecture
