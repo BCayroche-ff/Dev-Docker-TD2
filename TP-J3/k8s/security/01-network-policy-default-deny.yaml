@@ -1,0 +1,100 @@
+# ===========================================
+# Network Policy - Default Deny All
+# ===========================================
+# Politique de sécurité : DENY ALL par défaut
+#
+# PRINCIPE :
+# - Bloquer TOUT le trafic réseau par défaut
+# - Autoriser explicitement uniquement les flux nécessaires
+# - Approche "Zero Trust" / "Least Privilege"
+#
+# IMPACT :
+# - Sans cette policy : Pods peuvent communiquer librement
+# - Avec cette policy : Communication bloquée sauf si autorisée
+#
+# ARCHITECTURE :
+#   Frontend ← [DENY] → Backend
+#   Frontend ← [DENY] → PostgreSQL
+#   Frontend ← [DENY] → Redis
+#   Backend  ← [DENY] → Internet
+#
+# Les autres Network Policies vont ensuite AUTORISER les flux requis.
+#
+# PRÉREQUIS :
+# - Network Plugin doit supporter les Network Policies
+# - Calico : Oui ✅
+# - Flannel : Non ❌
+# - Weave : Oui ✅
+# - Cilium : Oui ✅
+# - Minikube : Utilise kindnet (support basique)
+#
+# VÉRIFICATION :
+#   kubectl get networkpolicies -n greenwatt
+#   kubectl describe networkpolicy default-deny-all -n greenwatt
+#
+# ===========================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    security: network-policy
+spec:
+  # Appliquer à tous les Pods du namespace
+  podSelector: {}
+
+  # Types de trafic à controller
+  policyTypes:
+  - Ingress  # Trafic entrant
+  - Egress   # Trafic sortant
+
+  # Aucune règle ingress = tout bloqué
+  # ingress: []
+
+  # Aucune règle egress = tout bloqué
+  # egress: []
+
+---
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. POURQUOI Default Deny ?
+#    - Sécurité : Minimize attack surface
+#    - Compliance : PCI-DSS, HIPAA exigent network segmentation
+#    - Zero Trust : "Never trust, always verify"
+#
+# 2. IMPACT SUR LES PODS :
+#    - DNS ne fonctionne plus (pas de résolution de noms)
+#    - Pas de communication inter-pods
+#    - Pas d'accès Internet
+#    - ⚠️ Il FAUT créer les policies d'autorisation !
+#
+# 3. ORDRE D'APPLICATION :
+#    1. Créer Default Deny (cette policy)
+#    2. Créer policies spécifiques (backend, postgres, redis)
+#    3. Tester la connectivité
+#
+# 4. DEBUGGING :
+#    # Tester depuis un Pod
+#    kubectl exec -it <backend-pod> -n greenwatt -- curl postgres:5432
+#    # → Devrait timeout ou connection refused
+#
+#    # Voir les policies appliquées
+#    kubectl describe networkpolicy -n greenwatt
+#
+# 5. ALTERNATIVES :
+#    - Cilium Network Policies (L7, DNS-aware)
+#    - Istio Authorization Policies (service mesh)
+#    - Calico Global Network Policies (multi-namespace)
+#
+# 6. PRODUCTION BEST PRACTICES :
+#    - TOUJOURS commencer par Default Deny
+#    - Documenter chaque règle d'autorisation
+#    - Auditer régulièrement les policies
+#    - Utiliser des labels descriptifs
+#
+# ===========================================

@@ -1,0 +1,129 @@
+# ===========================================
+# Ingress - HTTP Routing
+# ===========================================
+# Ingress Controller : Expose l'application via un seul point d'entrée HTTP/HTTPS
+#
+# FONCTIONNALITÉS :
+# - Routage basé sur les chemins (path-based routing)
+# - Host-based routing (greenwatt.local)
+# - TLS/SSL termination (bonus)
+# - Load balancing L7 (HTTP)
+#
+# ARCHITECTURE :
+#   Client → Ingress → Services → Pods
+#
+# ROUTES :
+#   / , /static , ... → frontend-service:80 (React SPA)
+#   /api/*            → backend-service:5000 (Node.js API)
+#
+# PRÉREQUIS :
+#   1. Installer NGINX Ingress Controller :
+#      minikube addons enable ingress
+#
+#   2. Ajouter greenwatt.local au /etc/hosts :
+#      echo "$(minikube ip) greenwatt.local" | sudo tee -a /etc/hosts
+#
+# ACCÈS :
+#   http://greenwatt.local          → Frontend React
+#   http://greenwatt.local/api/...  → Backend API
+#
+# VÉRIFICATION :
+#   kubectl get ingress -n greenwatt
+#   kubectl describe ingress greenwatt-ingress -n greenwatt
+#
+# ===========================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: greenwatt-ingress
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+  annotations:
+    # NGINX Ingress Controller annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # Taille max du body (pour uploads futurs)
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Timeouts pour les requêtes longues
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+
+spec:
+  # === INGRESS CLASS ===
+  # Spécifie quel Ingress Controller utiliser (nginx, traefik, etc.)
+  ingressClassName: nginx
+
+  # === RULES ===
+  rules:
+  - host: greenwatt.local  # Domaine local pour le TP
+    http:
+      paths:
+      # === ROUTE 1 : API Backend ===
+      # Toutes les requêtes /api/* vont vers le backend
+      - path: /api
+        pathType: Prefix  # Match /api, /api/, /api/stats, etc.
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 5000
+
+      # === ROUTE 2 : Frontend React ===
+      # Toutes les autres requêtes vont vers le frontend
+      # IMPORTANT : Cette règle doit être APRÈS /api pour éviter les conflits
+      - path: /
+        pathType: Prefix  # Match /, /dashboard, /static/*, etc.
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+
+  # === TLS/HTTPS (Bonus optionnel) ===
+  # Pour activer HTTPS avec un certificat auto-signé :
+  #
+  # tls:
+  # - hosts:
+  #   - greenwatt.local
+  #   secretName: greenwatt-tls  # Secret contenant cert.pem et key.pem
+  #
+  # Créer le certificat :
+  #   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  #     -keyout tls.key -out tls.crt -subj "/CN=greenwatt.local"
+  #   kubectl create secret tls greenwatt-tls \
+  #     --key tls.key --cert tls.crt -n greenwatt
+
+---
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. PATH TYPES :
+#    - Exact : Match exact uniquement (/api != /api/)
+#    - Prefix : Match le préfixe (/api match /api, /api/, /api/stats)
+#    - ImplementationSpecific : Dépend de l'Ingress Controller
+#
+# 2. ORDRE DES RÈGLES :
+#    - Les règles sont évaluées dans l'ordre
+#    - Mettre les chemins plus spécifiques EN PREMIER
+#    - Exemple : /api/v2 avant /api avant /
+#
+# 3. REWRITE-TARGET :
+#    - Par défaut, le chemin complet est transmis au service
+#    - rewrite-target: / remplace le chemin par /
+#    - Exemple : /api/stats devient /stats au backend
+#    - Pour notre backend qui a déjà /api dans les routes, on garde /
+#
+# 4. INGRESS vs SERVICE :
+#    - Service : Load balancing L4 (TCP/UDP), interne
+#    - Ingress : Routing L7 (HTTP), externe, basé sur hostname/path
+#
+# 5. ALTERNATIVES :
+#    - Traefik Ingress Controller
+#    - HAProxy Ingress
+#    - Istio Gateway (service mesh)
+#    - API Gateway (Kong, Tyk)
+#
+# ===========================================

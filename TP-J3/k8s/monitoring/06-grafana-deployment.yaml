@@ -1,0 +1,205 @@
+# ===========================================
+# Grafana Deployment
+# ===========================================
+# Grafana : Plateforme de visualisation et dashboarding
+#
+# FONCTIONNALITÉS :
+# - Dashboards interactifs
+# - Alerting
+# - Multi-datasources (Prometheus, MySQL, PostgreSQL, etc.)
+# - User management
+# - Plugins
+#
+# ARCHITECTURE :
+#   Grafana → query → Prometheus → métriques Backend
+#
+# ACCÈS :
+#   kubectl port-forward -n monitoring svc/grafana-service 3000:3000
+#   http://localhost:3000
+#   Login par défaut : admin / admin
+#
+# ===========================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+    component: monitoring
+spec:
+  replicas: 1  # Single instance pour ce TP
+
+  selector:
+    matchLabels:
+      app: grafana
+
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      # === SECURITY CONTEXT ===
+      securityContext:
+        fsGroup: 472  # Grafana user
+        runAsNonRoot: true
+        runAsUser: 472
+
+      # === CONTAINERS ===
+      containers:
+      - name: grafana
+        image: grafana/grafana:11.4.0  # Dernière version stable
+        imagePullPolicy: IfNotPresent
+
+        # === PORTS ===
+        ports:
+        - name: http
+          containerPort: 3000
+          protocol: TCP
+
+        # === ENVIRONMENT VARIABLES ===
+        env:
+        # Admin credentials (CHANGEZ EN PRODUCTION!)
+        - name: GF_SECURITY_ADMIN_USER
+          value: "admin"
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "greenwatt2025"  # ⚠️ Utiliser un Secret en production!
+
+        # Configuration générale
+        - name: GF_INSTALL_PLUGINS
+          value: ""  # Liste de plugins à installer (séparés par ,)
+
+        # Anonymiser les données de télémétrie
+        - name: GF_ANALYTICS_REPORTING_ENABLED
+          value: "false"
+
+        # Disable login form (pour OAuth/LDAP)
+        # - name: GF_AUTH_DISABLE_LOGIN_FORM
+        #   value: "false"
+
+        # === LIVENESS PROBE ===
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # === READINESS PROBE ===
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 5
+
+        # === RESOURCES ===
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 300m
+            memory: 512Mi
+
+        # === VOLUME MOUNTS ===
+        volumeMounts:
+        # Datasources provisioning
+        - name: grafana-datasources
+          mountPath: /etc/grafana/provisioning/datasources
+          readOnly: true
+
+        # Dashboards provisioning
+        - name: grafana-dashboards-provider
+          mountPath: /etc/grafana/provisioning/dashboards
+          readOnly: true
+
+        # Dashboard files
+        - name: grafana-dashboards
+          mountPath: /var/lib/grafana/dashboards
+          readOnly: true
+
+        # Persistent storage for Grafana data (users, settings, etc.)
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+
+      # === VOLUMES ===
+      volumes:
+      # Datasource configuration
+      - name: grafana-datasources
+        configMap:
+          name: grafana-datasources
+
+      # Dashboard provider configuration
+      - name: grafana-dashboards-provider
+        configMap:
+          name: grafana-dashboards
+          items:
+          - key: dashboards.yaml
+            path: dashboards.yaml
+
+      # Dashboard JSON files
+      - name: grafana-dashboards
+        configMap:
+          name: grafana-dashboards
+
+      # Storage for Grafana data
+      - name: grafana-storage
+        emptyDir: {}  # Pour le TP (production = PVC)
+        # persistentVolumeClaim:
+        #   claimName: grafana-pvc
+
+---
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. PROVISIONING :
+#    - Datasources : Configurés automatiquement via ConfigMap
+#    - Dashboards : Importés automatiquement au démarrage
+#    - Pas besoin de configuration manuelle dans l'UI
+#
+# 2. CREDENTIALS :
+#    - Par défaut : admin / greenwatt2025
+#    - ⚠️ Production : Utiliser un Secret Kubernetes
+#    - Exemple :
+#      env:
+#      - name: GF_SECURITY_ADMIN_PASSWORD
+#        valueFrom:
+#          secretKeyRef:
+#            name: grafana-credentials
+#            key: admin-password
+#
+# 3. STOCKAGE :
+#    - emptyDir : Perd les données si Pod redémarre
+#    - PVC : Persistant (utilisateurs, dashboards custom, etc.)
+#    - En production : TOUJOURS utiliser un PVC
+#
+# 4. PLUGINS :
+#    - Installer via GF_INSTALL_PLUGINS
+#    - Exemple : "grafana-clock-panel,grafana-simple-json-datasource"
+#    - Plugins populaires : worldmap-panel, pie-chart-panel, etc.
+#
+# 5. AUTHENTIFICATION :
+#    - Basic : Login/password (par défaut)
+#    - OAuth : Google, GitHub, GitLab, Azure AD
+#    - LDAP/Active Directory
+#    - SAML
+#    - Configuration via environment variables ou grafana.ini
+#
+# 6. ALERTING :
+#    - Grafana Alerting (nouvelle version)
+#    - Notification channels : Email, Slack, PagerDuty, etc.
+#    - Configuration dans l'UI Grafana
+#
+# 7. DASHBOARDS COMMUNAUTAIRES :
+#    - https://grafana.com/grafana/dashboards/
+#    - Node Exporter Full : 1860
+#    - Kubernetes Cluster : 7249
+#    - Nginx Ingress : 9614
+#
+# ===========================================

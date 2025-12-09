@@ -47,7 +47,7 @@ spec:
   - name: http
     protocol: TCP
     port: 80          # Port du Service (interne)
-    targetPort: 80    # Port du conteneur NGINX
+    targetPort: 8080  # Port du conteneur NGINX (8080 pour non-root user)
     # nodePort: 30080  # Optionnel : forcer un port spécifique (30000-32767)
                        # Si omis, K8s assigne automatiquement
 

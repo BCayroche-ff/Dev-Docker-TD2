@@ -3,14 +3,103 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const { Pool } = require('pg');
 const redis = require('redis');
+const promClient = require('prom-client');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ====================================
+// PROMETHEUS METRICS SETUP
+// ====================================
+// Create a Registry to register the metrics
+const register = new promClient.Registry();
+
+// Add default metrics (CPU, memory, etc.)
+promClient.collectDefaultMetrics({
+  register,
+  prefix: 'greenwatt_',
+});
+
+// Custom metric: HTTP request counter
+const httpRequestCounter = new promClient.Counter({
+  name: 'greenwatt_http_requests_total',
+  help: 'Total number of HTTP requests',
+  labelNames: ['method', 'route', 'status_code'],
+  registers: [register]
+});
+
+// Custom metric: HTTP request duration histogram
+const httpRequestDuration = new promClient.Histogram({
+  name: 'greenwatt_http_request_duration_seconds',
+  help: 'Duration of HTTP requests in seconds',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  registers: [register]
+});
+
+// Custom metric: Active installations gauge
+const activeInstallationsGauge = new promClient.Gauge({
+  name: 'greenwatt_active_installations',
+  help: 'Number of active energy installations',
+  registers: [register]
+});
+
+// Custom metric: Total energy production gauge
+const totalEnergyGauge = new promClient.Gauge({
+  name: 'greenwatt_total_power_kw',
+  help: 'Total current power production in kW',
+  registers: [register]
+});
+
+// Custom metric: Database query counter
+const dbQueryCounter = new promClient.Counter({
+  name: 'greenwatt_db_queries_total',
+  help: 'Total number of database queries',
+  labelNames: ['query_type'],
+  registers: [register]
+});
+
+// Custom metric: Redis cache hit/miss counter
+const cacheCounter = new promClient.Counter({
+  name: 'greenwatt_cache_operations_total',
+  help: 'Total number of cache operations',
+  labelNames: ['operation', 'result'],
+  registers: [register]
+});
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+
+// Metrics middleware - track all HTTP requests
+app.use((req, res, next) => {
+  const start = Date.now();
+
+  // Override res.json to capture when response is sent
+  const originalJson = res.json.bind(res);
+  res.json = function(data) {
+    const duration = (Date.now() - start) / 1000; // Convert to seconds
+    const route = req.route ? req.route.path : req.path;
+
+    // Record metrics
+    httpRequestCounter.inc({
+      method: req.method,
+      route: route,
+      status_code: res.statusCode
+    });
+
+    httpRequestDuration.observe({
+      method: req.method,
+      route: route,
+      status_code: res.statusCode
+    }, duration);
+
+    return originalJson(data);
+  };
+
+  next();
+});
 
 // PostgreSQL connection
 const pool = new Pool({
@@ -45,13 +134,14 @@ pool.query('SELECT NOW()', (err, res) => {
 
 // Routes
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     message: 'Welcome to GreenWatt API - Renewable Energy Monitoring Platform',
     version: '1.0.0',
     status: 'running',
     endpoints: [
       '/api/health',
       '/api/ready',
+      '/metrics',
       '/api/installations',
       '/api/installations/:id',
       '/api/production/current',
@@ -76,22 +166,52 @@ app.get('/api/ready', async (req, res) => {
   try {
     // Check database
     await pool.query('SELECT 1');
-    
+
     // Check Redis
     if (redisClient && redisClient.isOpen) {
       await redisClient.ping();
     }
-    
-    res.status(200).json({ 
+
+    res.status(200).json({
       status: 'ready',
       database: 'connected',
       cache: 'connected'
     });
   } catch (error) {
-    res.status(503).json({ 
+    res.status(503).json({
       status: 'not ready',
-      error: error.message 
+      error: error.message
     });
+  }
+});
+
+// Prometheus metrics endpoint
+app.get('/metrics', async (req, res) => {
+  try {
+    // Update gauges with current values before exposing metrics
+    try {
+      // Update active installations count
+      const installationsCount = await pool.query(
+        "SELECT COUNT(*) as count FROM installations WHERE status = 'active'"
+      );
+      activeInstallationsGauge.set(parseInt(installationsCount.rows[0].count));
+
+      // Update total power production
+      const totalPower = await pool.query(
+        'SELECT COALESCE(SUM(power_output_kw), 0) as total FROM current_production'
+      );
+      totalEnergyGauge.set(parseFloat(totalPower.rows[0].total));
+    } catch (err) {
+      console.error('Error updating gauges:', err);
+    }
+
+    // Set content type to Prometheus format
+    res.set('Content-Type', register.contentType);
+    // Send metrics
+    res.end(await register.metrics());
+  } catch (error) {
+    console.error('Error exposing metrics:', error);
+    res.status(500).end(error.message);
   }
 });
 
@@ -106,10 +226,13 @@ app.get('/api/installations', async (req, res) => {
       const cachedData = await redisClient.get(cacheKey);
       if (cachedData) {
         console.log('📦 Returning installations from cache');
+        cacheCounter.inc({ operation: 'get', result: 'hit' });
         return res.json({
           source: 'cache',
           data: JSON.parse(cachedData)
         });
+      } else {
+        cacheCounter.inc({ operation: 'get', result: 'miss' });
       }
     }
 
@@ -130,10 +253,12 @@ app.get('/api/installations', async (req, res) => {
     query += ' ORDER BY id';
     
     const result = await pool.query(query, params);
-    
+    dbQueryCounter.inc({ query_type: 'select' });
+
     // Store in cache for 30 seconds
     if (redisClient && redisClient.isOpen) {
       await redisClient.setEx(cacheKey, 30, JSON.stringify(result.rows));
+      cacheCounter.inc({ operation: 'set', result: 'success' });
     }
     
     res.json({

@@ -1,0 +1,116 @@
+# ===========================================
+# Network Policy - PostgreSQL
+# ===========================================
+# Autorise le trafic UNIQUEMENT :
+# - Ingress : Depuis le Backend (port 5432)
+# - Egress  : Vers DNS (port 53)
+#
+# BLOQUE :
+# - Tout accès depuis le Frontend
+# - Tout accès depuis l'extérieur
+# - Tout trafic sortant sauf DNS
+#
+# PRINCIPE :
+# - La base de données ne doit être accessible que par le backend
+# - Defence in depth : Même si quelqu'un accède au frontend, pas d'accès direct à la DB
+#
+# ===========================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-network-policy
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: postgres
+    security: network-policy
+spec:
+  # Appliquer uniquement aux Pods PostgreSQL
+  podSelector:
+    matchLabels:
+      app: greenwatt
+      component: postgres
+
+  policyTypes:
+  - Ingress
+  - Egress
+
+  # === RÈGLES INGRESS (trafic entrant) ===
+  ingress:
+  # Règle 1 : Autoriser UNIQUEMENT le backend
+  - from:
+    - podSelector:
+        matchLabels:
+          app: greenwatt
+          component: backend
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  # === RÈGLES EGRESS (trafic sortant) ===
+  egress:
+  # Règle 1 : Autoriser DNS (résolution de noms)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. POURQUOI ISOLER POSTGRESQL ?
+#    - Principe de moindre privilège (Least Privilege)
+#    - Limite l'exposition en cas de compromission du frontend
+#    - Conforme PCI-DSS, HIPAA, GDPR
+#
+# 2. ATTAQUE EMPÊCHÉE :
+#    Scénario : Un attaquant compromet le frontend
+#    - Sans Network Policy : Accès direct à la DB ❌
+#    - Avec Network Policy : Aucun accès à la DB ✅
+#    - L'attaquant doit d'abord compromettre le backend
+#
+# 3. TESTER LA POLICY :
+#    # Depuis le backend : devrait fonctionner ✅
+#    kubectl exec -it <backend-pod> -n greenwatt -- \
+#      psql postgresql://admin:password@postgres:5432/greenwatt -c "SELECT 1"
+#
+#    # Depuis le frontend : devrait échouer ❌
+#    kubectl exec -it <frontend-pod> -n greenwatt -- sh
+#    # Installer psql ou netcat
+#    nc -zv postgres 5432
+#    # → Connection timeout ou refused
+#
+# 4. EGRESS MINIMAL :
+#    - PostgreSQL n'a besoin que de DNS
+#    - Pas d'accès Internet requis
+#    - Pas de communication avec d'autres Pods
+#
+# 5. LABELS REQUIS :
+#    # Vérifier le Deployment PostgreSQL
+#    kubectl get deployment postgres -n greenwatt -o yaml | grep -A5 labels
+#    # Doit avoir : app=greenwatt, component=postgres
+#
+# 6. DEBUGGING :
+#    # Voir si la policy est appliquée
+#    kubectl describe networkpolicy postgres-network-policy -n greenwatt
+#
+#    # Logs PostgreSQL si connexion refusée
+#    kubectl logs <postgres-pod> -n greenwatt
+#
+# 7. ALTERNATIVE : Mutual TLS
+#    - Network Policies : L3/L4 (IP/Port)
+#    - Service Mesh (Istio, Linkerd) : L7 + mTLS
+#    - Plus sécurisé mais plus complexe
+#
+# ===========================================

@@ -1,0 +1,205 @@
+# ===========================================
+# Helm Values - GreenWatt Platform
+# ===========================================
+# Valeurs par défaut pour le chart Helm GreenWatt
+#
+# OVERRIDE :
+#   helm install greenwatt . --set backend.replicas=5
+#   helm install greenwatt . -f values-prod.yaml
+#
+# ===========================================
+
+# Global settings
+global:
+  namespace: greenwatt
+  environment: production
+
+# Backend configuration
+backend:
+  enabled: true
+  name: backend
+  replicas: 3
+
+  image:
+    repository: greenwatt-backend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  env:
+    NODE_ENV: production
+    PORT: "5000"
+
+  secrets:
+    DATABASE_URL: "postgresql://admin:GreenEnergy2025!@postgres:5432/greenwatt"
+    REDIS_URL: "redis://redis:6379"
+
+  probes:
+    liveness:
+      path: /api/health
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readiness:
+      path: /api/ready
+      initialDelaySeconds: 10
+      periodSeconds: 5
+
+# Frontend configuration
+frontend:
+  enabled: true
+  name: frontend
+  replicas: 2
+
+  image:
+    repository: greenwatt-frontend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: NodePort
+    port: 80
+    targetPort: 8080  # Non-root NGINX listens on 8080
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  env:
+    REACT_APP_API_URL: "http://localhost:5000"
+
+# PostgreSQL configuration
+postgres:
+  enabled: true
+  name: postgres
+
+  image:
+    repository: postgres
+    tag: "15-alpine"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 5432
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""  # Use default storage class
+
+  env:
+    POSTGRES_DB: greenwatt
+    POSTGRES_USER: admin
+    POSTGRES_PASSWORD: "GreenEnergy2025!"
+
+# Redis configuration
+redis:
+  enabled: true
+  name: redis
+
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 6379
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  persistence:
+    enabled: true
+    size: 500Mi
+    storageClass: ""
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  host: greenwatt.local
+
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+
+  tls:
+    enabled: false
+    secretName: greenwatt-tls
+
+# HPA (Horizontal Pod Autoscaler)
+hpa:
+  backend:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPU: 70
+
+# Network Policies
+networkPolicy:
+  enabled: true
+
+# Monitoring
+monitoring:
+  prometheus:
+    enabled: true
+    namespace: monitoring
+
+    image:
+      repository: prom/prometheus
+      tag: v3.1.0
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+  grafana:
+    enabled: true
+
+    image:
+      repository: grafana/grafana
+      tag: "11.4.0"
+
+    adminUser: admin
+    adminPassword: "greenwatt2025"
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 300m
+        memory: 512Mi

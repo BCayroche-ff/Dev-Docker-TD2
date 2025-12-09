@@ -1,0 +1,44 @@
+# Development environment values
+global:
+  environment: development
+
+backend:
+  replicas: 1
+  image:
+    tag: "dev"
+    pullPolicy: Always
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+frontend:
+  replicas: 1
+  image:
+    tag: "dev"
+    pullPolicy: Always
+
+postgres:
+  persistence:
+    size: 500Mi
+
+redis:
+  persistence:
+    size: 250Mi
+
+hpa:
+  backend:
+    enabled: false  # Disabled in dev
+
+networkPolicy:
+  enabled: false  # Disabled for easier debugging
+
+monitoring:
+  prometheus:
+    enabled: false  # Optional in dev
+  grafana:
+    enabled: false

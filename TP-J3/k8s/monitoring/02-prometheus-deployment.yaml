@@ -1,0 +1,212 @@
+# ===========================================
+# Prometheus Deployment
+# ===========================================
+# Prometheus : Time-series database et système de monitoring
+#
+# FONCTIONNALITÉS :
+# - Collecte de métriques (pull model)
+# - Stockage time-series
+# - PromQL query language
+# - Alerting (avec Alertmanager)
+# - Service discovery (Kubernetes, Consul, etc.)
+#
+# ARCHITECTURE :
+#   Prometheus → scrape → Backend /metrics
+#              → scrape → Kubernetes API
+#              → scrape → Nodes
+#
+# ACCÈS :
+#   kubectl port-forward -n monitoring svc/prometheus-service 9090:9090
+#   http://localhost:9090
+#
+# ===========================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: monitoring
+spec:
+  replicas: 1  # Single instance pour ce TP (production = 2+)
+
+  selector:
+    matchLabels:
+      app: prometheus
+
+  template:
+    metadata:
+      labels:
+        app: prometheus
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      # === SERVICE ACCOUNT ===
+      # Nécessaire pour que Prometheus puisse découvrir les Pods/Services
+      serviceAccountName: prometheus
+
+      # === SECURITY CONTEXT ===
+      securityContext:
+        fsGroup: 65534  # 'nobody' user
+        runAsNonRoot: true
+        runAsUser: 65534
+
+      # === CONTAINERS ===
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v3.1.0  # Dernière version stable
+        imagePullPolicy: IfNotPresent
+
+        # === ARGUMENTS ===
+        args:
+        - '--config.file=/etc/prometheus/prometheus.yml'
+        - '--storage.tsdb.path=/prometheus/'
+        - '--storage.tsdb.retention.time=15d'  # Garder 15 jours de métriques
+        - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+        - '--web.console.templates=/usr/share/prometheus/consoles'
+        - '--web.enable-lifecycle'  # Permet de recharger la config via API
+
+        # === PORTS ===
+        ports:
+        - name: web
+          containerPort: 9090
+          protocol: TCP
+
+        # === LIVENESS PROBE ===
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # === READINESS PROBE ===
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 9090
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 5
+
+        # === RESOURCES ===
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+
+        # === VOLUME MOUNTS ===
+        volumeMounts:
+        # Mount de la configuration
+        - name: prometheus-config
+          mountPath: /etc/prometheus
+          readOnly: true
+        # Mount du stockage des données
+        - name: prometheus-storage
+          mountPath: /prometheus
+
+      # === VOLUMES ===
+      volumes:
+      # ConfigMap contenant prometheus.yml
+      - name: prometheus-config
+        configMap:
+          name: prometheus-config
+          defaultMode: 420
+
+      # Volume pour le stockage des métriques
+      - name: prometheus-storage
+        emptyDir: {}  # Pour le TP (production = PVC)
+        # persistentVolumeClaim:
+        #   claimName: prometheus-pvc
+
+---
+# ===========================================
+# Prometheus ServiceAccount + RBAC
+# ===========================================
+# Permet à Prometheus de découvrir les Pods/Services via l'API Kubernetes
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+# Lire les Pods, Services, Endpoints
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+
+# Lire les ConfigMaps (pour les règles)
+- apiGroups: [""]
+  resources:
+  - configmaps
+  verbs: ["get"]
+
+# Lire les Ingress
+- apiGroups: ["networking.k8s.io"]
+  resources:
+  - ingresses
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: monitoring
+
+---
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. POURQUOI SERVICE ACCOUNT ?
+#    - Prometheus utilise l'API Kubernetes pour découvrir les targets
+#    - Il a besoin de permissions RBAC pour lire Pods/Services
+#    - Sans ServiceAccount, les scrapes Kubernetes échoueraient
+#
+# 2. STOCKAGE :
+#    - emptyDir : Données perdues si le Pod redémarre (OK pour TP)
+#    - PVC : Données persistantes (OBLIGATOIRE en production)
+#
+# 3. SÉCURITÉ :
+#    - runAsUser 65534 : Utilisateur 'nobody' (non-root)
+#    - fsGroup 65534 : Permissions de fichiers
+#
+# 4. ALTERNATIVE : PROMETHEUS OPERATOR
+#    - Gère Prometheus via des CRDs (ServiceMonitor, PrometheusRule)
+#    - Simpllifie la configuration multi-environnements
+#    - Recommandé pour la production
+#    - Installation : kubectl create -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/bundle.yaml
+#
+# 5. MÉTRIQUES EXPOSÉES :
+#    - Prometheus expose ses propres métriques sur :9090/metrics
+#    - Peut se monitorer lui-même (job 'prometheus')
+#
+# ===========================================

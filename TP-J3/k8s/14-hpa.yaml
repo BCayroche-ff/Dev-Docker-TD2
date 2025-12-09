@@ -1,0 +1,164 @@
+# ===========================================
+# Horizontal Pod Autoscaler (HPA)
+# ===========================================
+# Autoscaling automatique du backend en fonction de la charge CPU.
+#
+# OBJECTIF :
+# - Scale-out automatique quand la charge augmente
+# - Scale-in automatique quand la charge diminue
+# - Garantir performance + optimisation des coûts
+#
+# FONCTIONNEMENT :
+#   Charge CPU > 70% → Ajouter des Pods (jusqu'à 10)
+#   Charge CPU < 70% → Retirer des Pods (minimum 3)
+#
+# ARCHITECTURE :
+#   HPA → observe Metrics Server → ajuste Deployment.replicas
+#
+# PRÉREQUIS :
+#   1. Metrics Server installé :
+#      kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+#
+#      OU pour Minikube :
+#      minikube addons enable metrics-server
+#
+#   2. Resource requests définis dans le Deployment (backend) :
+#      resources:
+#        requests:
+#          cpu: 200m  # ← OBLIGATOIRE pour HPA
+#
+# VÉRIFICATION :
+#   kubectl get hpa -n greenwatt
+#   kubectl describe hpa backend-hpa -n greenwatt
+#   kubectl top pods -n greenwatt  # Voir consommation CPU/RAM
+#
+# SIMULATION DE CHARGE (pour tester l'autoscaling) :
+#   # Générer du trafic avec Apache Bench
+#   kubectl run -it --rm load-generator --image=busybox --restart=Never -- /bin/sh
+#   while true; do wget -q -O- http://backend-service:5000/api/stats; done
+#
+# ===========================================
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: backend
+
+spec:
+  # === TARGET ===
+  # Quel Deployment surveiller et scaler
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend  # Nom du Deployment backend
+
+  # === REPLICA LIMITS ===
+  minReplicas: 3   # Minimum 3 Pods (haute dispo)
+  maxReplicas: 10  # Maximum 10 Pods (éviter explosion de coûts)
+
+  # === METRICS ===
+  # Métriques qui déclenchent le scaling
+  metrics:
+  # Métrique 1 : CPU Utilization
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70  # Scale si moyenne CPU > 70%
+
+  # === OPTIONAL : Memory-based scaling ===
+  # Décommenter pour ajouter du scaling basé sur la RAM
+  #
+  # - type: Resource
+  #   resource:
+  #     name: memory
+  #     target:
+  #       type: Utilization
+  #       averageUtilization: 80  # Scale si moyenne RAM > 80%
+
+  # === OPTIONAL : Custom Metrics ===
+  # Exemple : Scaler basé sur le nombre de requêtes HTTP/s
+  # Nécessite un adaptateur de métriques (Prometheus Adapter)
+  #
+  # - type: Pods
+  #   pods:
+  #     metric:
+  #       name: http_requests_per_second
+  #     target:
+  #       type: AverageValue
+  #       averageValue: "1000"  # Scale si > 1000 req/s par Pod
+
+  # === BEHAVIOR (K8s 1.23+) ===
+  # Contrôle la vitesse de scaling (éviter les oscillations)
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Attendre 5min avant de scale down
+      policies:
+      - type: Percent
+        value: 50        # Ne retirer que 50% des Pods à la fois
+        periodSeconds: 60  # Toutes les 60 secondes max
+      - type: Pods
+        value: 1         # Ou retirer 1 Pod à la fois
+        periodSeconds: 60
+      selectPolicy: Min  # Prendre le minimum entre les deux policies
+
+    scaleUp:
+      stabilizationWindowSeconds: 0  # Scale up immédiatement
+      policies:
+      - type: Percent
+        value: 100       # Doubler le nombre de Pods possible
+        periodSeconds: 15  # Toutes les 15 secondes
+      - type: Pods
+        value: 2         # Ou ajouter 2 Pods à la fois
+        periodSeconds: 15
+      selectPolicy: Max  # Prendre le maximum entre les deux policies
+
+---
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. CALCUL DU SCALING :
+#    - HPA calcule : desiredReplicas = ceil(currentReplicas * currentMetric / targetMetric)
+#    - Exemple : 3 Pods à 90% CPU → 3 * 90/70 = 3.86 → 4 Pods
+#
+# 2. COOLDOWN PERIODS :
+#    - Scale up : 0s (réagir vite aux pics de charge)
+#    - Scale down : 300s (éviter les oscillations "flapping")
+#
+# 3. MÉTRIQUE "Utilization" vs "AverageValue" :
+#    - Utilization : Pourcentage des requests (70% de 200m = 140m)
+#    - AverageValue : Valeur absolue (140m directement)
+#
+# 4. LIMITES DU HPA :
+#    - ❌ Ne peut pas scaler en dessous de minReplicas
+#    - ❌ Ne peut pas scaler un Deployment à replicas=0
+#    - ❌ Incompatible avec scaling manuel (kubectl scale)
+#    - ❌ Nécessite resource requests définis
+#
+# 5. ALTERNATIVES :
+#    - Vertical Pod Autoscaler (VPA) : Ajuste CPU/RAM requests
+#    - Cluster Autoscaler : Ajoute des nœuds au cluster
+#    - KEDA : Event-driven autoscaling (messages queue, etc.)
+#
+# 6. PRODUCTION BEST PRACTICES :
+#    - Toujours définir minReplicas ≥ 2 (haute dispo)
+#    - Toujours définir maxReplicas (éviter explosion)
+#    - Tester le scaling AVANT la prod (load tests)
+#    - Monitorer avec Prometheus + Grafana
+#    - Alerter si maxReplicas atteint (capacité insuffisante)
+#
+# 7. DEBUGGING HPA :
+#    - kubectl describe hpa backend-hpa -n greenwatt
+#      → Voir "Conditions" et "Events"
+#    - kubectl top pods -n greenwatt
+#      → Vérifier consommation réelle CPU/RAM
+#    - kubectl get hpa backend-hpa -n greenwatt --watch
+#      → Observer le scaling en temps réel
+#
+# ===========================================

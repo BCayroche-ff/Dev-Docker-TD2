@@ -1,0 +1,219 @@
+# ===========================================
+# Grafana Dashboards ConfigMap
+# ===========================================
+# Dashboard pré-configuré pour GreenWatt Platform
+#
+# MÉTRIQUES AFFICHÉES :
+# - Requêtes HTTP (total, rate, latency)
+# - Installations actives
+# - Production totale (kW)
+# - Cache hit ratio
+# - Requêtes DB
+#
+# PROVISIONING :
+# - Dashboard automatiquement importé au démarrage
+# - Pas besoin d'import manuel
+#
+# ===========================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+data:
+  # Provider configuration
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'GreenWatt'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      editable: true
+      options:
+        path: /var/lib/grafana/dashboards
+
+  # GreenWatt Application Dashboard
+  greenwatt-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "GreenWatt - Renewable Energy Platform",
+        "tags": ["greenwatt", "renewable-energy", "monitoring"],
+        "timezone": "browser",
+        "schemaVersion": 16,
+        "version": 1,
+        "refresh": "10s",
+        "panels": [
+          {
+            "id": 1,
+            "title": "HTTP Requests Rate",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+            "targets": [
+              {
+                "expr": "rate(greenwatt_http_requests_total[1m])",
+                "legendFormat": "{{method}} {{route}} ({{status_code}})",
+                "refId": "A"
+              }
+            ],
+            "yaxes": [
+              {"format": "reqps", "label": "Requests/sec"},
+              {"format": "short"}
+            ]
+          },
+          {
+            "id": 2,
+            "title": "HTTP Request Duration (95th percentile)",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(greenwatt_http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "{{method}} {{route}}",
+                "refId": "A"
+              }
+            ],
+            "yaxes": [
+              {"format": "s", "label": "Duration"},
+              {"format": "short"}
+            ]
+          },
+          {
+            "id": 3,
+            "title": "Active Installations",
+            "type": "singlestat",
+            "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8},
+            "targets": [
+              {
+                "expr": "greenwatt_active_installations",
+                "refId": "A"
+              }
+            ],
+            "format": "none",
+            "valueName": "current"
+          },
+          {
+            "id": 4,
+            "title": "Total Power Production (kW)",
+            "type": "singlestat",
+            "gridPos": {"h": 4, "w": 6, "x": 6, "y": 8},
+            "targets": [
+              {
+                "expr": "greenwatt_total_power_kw",
+                "refId": "A"
+              }
+            ],
+            "format": "watt",
+            "valueName": "current",
+            "colors": ["#299c46", "#e5ac0e", "#bf1b00"],
+            "thresholds": "500,1000"
+          },
+          {
+            "id": 5,
+            "title": "Cache Hit Ratio",
+            "type": "singlestat",
+            "gridPos": {"h": 4, "w": 6, "x": 12, "y": 8},
+            "targets": [
+              {
+                "expr": "sum(rate(greenwatt_cache_operations_total{result=\"hit\"}[5m])) / sum(rate(greenwatt_cache_operations_total{operation=\"get\"}[5m])) * 100",
+                "refId": "A"
+              }
+            ],
+            "format": "percent",
+            "valueName": "current",
+            "decimals": 1
+          },
+          {
+            "id": 6,
+            "title": "Database Queries",
+            "type": "singlestat",
+            "gridPos": {"h": 4, "w": 6, "x": 18, "y": 8},
+            "targets": [
+              {
+                "expr": "sum(rate(greenwatt_db_queries_total[5m]))",
+                "refId": "A"
+              }
+            ],
+            "format": "ops",
+            "valueName": "current"
+          },
+          {
+            "id": 7,
+            "title": "Pod CPU Usage",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+            "targets": [
+              {
+                "expr": "rate(greenwatt_process_cpu_seconds_total[1m]) * 100",
+                "legendFormat": "{{pod}}",
+                "refId": "A"
+              }
+            ],
+            "yaxes": [
+              {"format": "percent", "label": "CPU %"},
+              {"format": "short"}
+            ]
+          },
+          {
+            "id": 8,
+            "title": "Pod Memory Usage",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+            "targets": [
+              {
+                "expr": "greenwatt_process_resident_memory_bytes / 1024 / 1024",
+                "legendFormat": "{{pod}}",
+                "refId": "A"
+              }
+            ],
+            "yaxes": [
+              {"format": "decmbytes", "label": "Memory"},
+              {"format": "short"}
+            ]
+          },
+          {
+            "id": 9,
+            "title": "HTTP Status Codes Distribution",
+            "type": "piechart",
+            "gridPos": {"h": 8, "w": 8, "x": 0, "y": 20},
+            "targets": [
+              {
+                "expr": "sum by (status_code) (rate(greenwatt_http_requests_total[5m]))",
+                "legendFormat": "{{status_code}}",
+                "refId": "A"
+              }
+            ]
+          },
+          {
+            "id": 10,
+            "title": "Cache Operations",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 16, "x": 8, "y": 20},
+            "targets": [
+              {
+                "expr": "rate(greenwatt_cache_operations_total{operation=\"get\", result=\"hit\"}[1m])",
+                "legendFormat": "Cache Hits",
+                "refId": "A"
+              },
+              {
+                "expr": "rate(greenwatt_cache_operations_total{operation=\"get\", result=\"miss\"}[1m])",
+                "legendFormat": "Cache Misses",
+                "refId": "B"
+              },
+              {
+                "expr": "rate(greenwatt_cache_operations_total{operation=\"set\"}[1m])",
+                "legendFormat": "Cache Sets",
+                "refId": "C"
+              }
+            ],
+            "yaxes": [
+              {"format": "ops", "label": "Operations/sec"},
+              {"format": "short"}
+            ]
+          }
+        ]
+      },
+      "overwrite": true
+    }

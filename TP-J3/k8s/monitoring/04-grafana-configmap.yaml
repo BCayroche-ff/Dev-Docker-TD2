@@ -1,0 +1,31 @@
+# ===========================================
+# Grafana ConfigMap - Datasource
+# ===========================================
+# Configuration du datasource Prometheus pour Grafana
+#
+# DATASOURCE :
+# - Type : Prometheus
+# - URL : http://prometheus-service:9090
+# - Access : proxy (Grafana fait les requêtes)
+#
+# ===========================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus-service:9090
+      isDefault: true
+      editable: true
+      jsonData:
+        timeInterval: "10s"
+        queryTimeout: "60s"
+        httpMethod: "POST"

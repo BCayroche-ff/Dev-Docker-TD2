@@ -1,0 +1,362 @@
+# ===========================================
+# GitHub Actions - CI/CD Pipeline
+# ===========================================
+# Pipeline complet : Build → Test → Push Docker Hub → Deploy K8s
+#
+# ÉTAPES :
+# 1. Build des images Docker (backend + frontend)
+# 2. Scan de sécurité avec Trivy
+# 3. Push vers Docker Hub
+# 4. Déploiement sur Kubernetes
+#
+# DÉCLENCHEMENT :
+# - Push sur main (auto-deploy production)
+# - Push sur develop (auto-deploy staging)
+# - Manual workflow dispatch
+#
+# PRÉREQUIS - SECRETS GITHUB :
+# Configurer dans Settings > Secrets and variables > Actions :
+# - DOCKERHUB_USERNAME : Votre nom d'utilisateur Docker Hub
+# - DOCKERHUB_TOKEN : Token d'accès Docker Hub (pas le mot de passe!)
+# - KUBE_CONFIG : Contenu encodé en base64 de votre ~/.kube/config
+#
+# CRÉER LE TOKEN DOCKER HUB :
+#   1. docker.com > Account Settings > Security > New Access Token
+#   2. Nom: github-actions, Permissions: Read & Write
+#   3. Copier le token (impossible de le revoir après!)
+#
+# CRÉER LE KUBE_CONFIG SECRET :
+#   cat ~/.kube/config | base64 | pbcopy
+#   # ou : cat ~/.kube/config | base64 -w 0
+#   # Coller dans GitHub Secret "KUBE_CONFIG"
+#
+# ===========================================
+
+name: CI/CD Pipeline
+
+on:
+  # Auto-deploy on push to main/develop
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'k8s/**'
+      - '.github/workflows/ci-cd.yml'
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+        - development
+
+env:
+  # Docker Hub repository (CHANGEZ PAR LE VÔTRE!)
+  DOCKERHUB_REPO: yourusername  # ⚠️ À MODIFIER
+  BACKEND_IMAGE: greenwatt-backend
+  FRONTEND_IMAGE: greenwatt-frontend
+
+jobs:
+  # ===================================
+  # JOB 1 : Build Backend
+  # ===================================
+  build-backend:
+    name: Build Backend Image
+    runs-on: ubuntu-latest
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels)
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKERHUB_REPO }}/${{ env.BACKEND_IMAGE }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Backend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=registry,ref=${{ env.DOCKERHUB_REPO }}/${{ env.BACKEND_IMAGE }}:buildcache
+        cache-to: type=registry,ref=${{ env.DOCKERHUB_REPO }}/${{ env.BACKEND_IMAGE }}:buildcache,mode=max
+
+  # ===================================
+  # JOB 2 : Build Frontend
+  # ===================================
+  build-frontend:
+    name: Build Frontend Image
+    runs-on: ubuntu-latest
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels)
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKERHUB_REPO }}/${{ env.FRONTEND_IMAGE }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Frontend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          REACT_APP_API_URL=http://greenwatt.local/api
+        cache-from: type=registry,ref=${{ env.DOCKERHUB_REPO }}/${{ env.FRONTEND_IMAGE }}:buildcache
+        cache-to: type=registry,ref=${{ env.DOCKERHUB_REPO }}/${{ env.FRONTEND_IMAGE }}:buildcache,mode=max
+
+  # ===================================
+  # JOB 3 : Security Scan
+  # ===================================
+  security-scan:
+    name: Security Scan with Trivy
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Scan Backend image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '${{ env.DOCKERHUB_REPO }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }}'
+        format: 'table'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'  # Don't fail (already built and pushed)
+
+    - name: Scan Frontend image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '${{ env.DOCKERHUB_REPO }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}'
+        format: 'table'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
+
+  # ===================================
+  # JOB 4 : Deploy to Kubernetes
+  # ===================================
+  deploy-kubernetes:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend, security-scan]
+    environment:
+      name: ${{ github.event.inputs.environment || 'production' }}
+      url: http://greenwatt.local
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v4
+      with:
+        version: 'v1.28.0'
+
+    - name: Configure kubectl
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+
+    - name: Verify Kubernetes connection
+      run: |
+        kubectl cluster-info
+        kubectl get nodes
+
+    - name: Deploy to Kubernetes
+      run: |
+        # Apply all manifests
+        kubectl apply -f k8s/
+
+        # Update backend image
+        kubectl set image deployment/backend \
+          backend=${{ env.DOCKERHUB_REPO }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }} \
+          -n greenwatt
+
+        # Update frontend image
+        kubectl set image deployment/frontend \
+          frontend=${{ env.DOCKERHUB_REPO }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
+          -n greenwatt
+
+        # Wait for rollout to complete
+        kubectl rollout status deployment/backend -n greenwatt --timeout=5m
+        kubectl rollout status deployment/frontend -n greenwatt --timeout=5m
+
+    - name: Deploy monitoring stack
+      run: |
+        kubectl apply -f k8s/monitoring/
+        echo "✅ Monitoring stack deployed"
+
+    - name: Verify deployment
+      run: |
+        echo "=== Pods Status ==="
+        kubectl get pods -n greenwatt
+
+        echo "=== Services ==="
+        kubectl get svc -n greenwatt
+
+        echo "=== Ingress ==="
+        kubectl get ingress -n greenwatt
+
+        echo "=== HPA ==="
+        kubectl get hpa -n greenwatt
+
+    - name: Deployment summary
+      run: |
+        echo "🚀 Deployment completed successfully!"
+        echo "Backend: ${{ env.DOCKERHUB_REPO }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }}"
+        echo "Frontend: ${{ env.DOCKERHUB_REPO }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}"
+        echo "Environment: ${{ github.event.inputs.environment || 'production' }}"
+        echo "Application URL: http://greenwatt.local"
+
+---
+# ===========================================
+# CONFIGURATION DES SECRETS GITHUB
+# ===========================================
+#
+# 1. DOCKERHUB_USERNAME :
+#    - Votre nom d'utilisateur Docker Hub
+#    - Exemple : "johndoe"
+#
+# 2. DOCKERHUB_TOKEN :
+#    - Token d'accès Docker Hub (PAS le mot de passe!)
+#    - Créer un token :
+#      docker.com > Account Settings > Security > New Access Token
+#    - Nom : github-actions
+#    - Permissions : Read & Write
+#    - ⚠️ Copiez le token immédiatement (impossible de le revoir)
+#
+# 3. KUBE_CONFIG :
+#    - Contenu encodé en base64 de votre ~/.kube/config
+#    - Commandes :
+#      # macOS
+#      cat ~/.kube/config | base64 | pbcopy
+#
+#      # Linux
+#      cat ~/.kube/config | base64 -w 0 | xclip -selection clipboard
+#
+#      # Ou manuellement
+#      cat ~/.kube/config | base64 > kubeconfig.base64
+#
+#    - ⚠️ SÉCURITÉ : Ce fichier donne accès complet à votre cluster!
+#    - Production : Utiliser un ServiceAccount avec permissions limitées
+#
+# 4. AJOUTER LES SECRETS :
+#    GitHub Repo > Settings > Secrets and variables > Actions > New repository secret
+#    - Name: DOCKERHUB_USERNAME, Secret: votre username
+#    - Name: DOCKERHUB_TOKEN, Secret: le token copié
+#    - Name: KUBE_CONFIG, Secret: le base64 du kubeconfig
+#
+# ===========================================
+# ALTERNATIVES POUR KUBE_CONFIG
+# ===========================================
+#
+# OPTION 1 : ServiceAccount Kubernetes (recommandé)
+#   kubectl create serviceaccount github-actions -n greenwatt
+#   kubectl create rolebinding github-actions \
+#     --clusterrole=edit \
+#     --serviceaccount=greenwatt:github-actions \
+#     --namespace=greenwatt
+#
+#   # Extraire le token
+#   kubectl create token github-actions -n greenwatt --duration=87600h
+#
+# OPTION 2 : GitHub Environments
+#   - Créer des environments (production, staging)
+#   - Chaque environment a ses propres secrets
+#   - Protection rules (required reviewers, wait timer)
+#
+# OPTION 3 : Cloud Provider Actions
+#   - AWS : configure-aws-credentials
+#   - GCP : auth action
+#   - Azure : azure/login
+#
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. DOCKER BUILDX CACHE :
+#    - cache-from/cache-to : Accélère les builds
+#    - Réutilise les layers précédents
+#    - Gain : 50-90% de temps de build
+#
+# 2. IMAGE TAGS :
+#    - latest : Dernière version de la branche par défaut
+#    - main-abc123 : SHA du commit sur main
+#    - develop-xyz456 : SHA du commit sur develop
+#    - Permet rollback facile
+#
+# 3. KUBERNETES ROLLOUT :
+#    - kubectl set image : Met à jour l'image
+#    - kubectl rollout status : Attend que le déploiement soit fini
+#    - timeout=5m : Échoue si pas fini après 5 min
+#
+# 4. ENVIRONMENTS GITHUB :
+#    - Protection rules : Require reviewers
+#    - Secrets spécifiques par environnement
+#    - URL de l'environment affiché dans GitHub
+#
+# 5. AMÉLIORATIONS POSSIBLES :
+#    - Tests automatisés (npm test, pytest)
+#    - Notifications Slack/Discord
+#    - Déploiement blue/green ou canary
+#    - Rollback automatique si healthcheck échoue
+#    - Helm chart deployment
+#
+# ===========================================

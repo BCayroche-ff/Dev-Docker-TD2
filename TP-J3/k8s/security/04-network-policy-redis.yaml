@@ -1,0 +1,133 @@
+# ===========================================
+# Network Policy - Redis
+# ===========================================
+# Autorise le trafic UNIQUEMENT :
+# - Ingress : Depuis le Backend (port 6379)
+# - Egress  : Vers DNS (port 53)
+#
+# BLOQUE :
+# - Tout accès depuis le Frontend
+# - Tout accès depuis l'extérieur
+# - Tout trafic sortant sauf DNS
+#
+# PRINCIPE :
+# - Redis (cache) ne doit être accessible que par le backend
+# - Même logique que PostgreSQL
+#
+# ===========================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-network-policy
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: redis
+    security: network-policy
+spec:
+  # Appliquer uniquement aux Pods Redis
+  podSelector:
+    matchLabels:
+      app: greenwatt
+      component: redis
+
+  policyTypes:
+  - Ingress
+  - Egress
+
+  # === RÈGLES INGRESS (trafic entrant) ===
+  ingress:
+  # Règle 1 : Autoriser UNIQUEMENT le backend
+  - from:
+    - podSelector:
+        matchLabels:
+          app: greenwatt
+          component: backend
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # === RÈGLES EGRESS (trafic sortant) ===
+  egress:
+  # Règle 1 : Autoriser DNS (résolution de noms)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. POURQUOI ISOLER REDIS ?
+#    - Redis stocke des données sensibles (cache d'installations, etc.)
+#    - Par défaut, Redis n'a PAS d'authentification
+#    - Network Policy ajoute une couche de sécurité
+#
+# 2. REDIS SECURITY BEST PRACTICES :
+#    - Network Policy : Limiter l'accès réseau ✅
+#    - requirepass : Ajouter un mot de passe Redis
+#    - rename-command : Désactiver commandes dangereuses (FLUSHALL, CONFIG)
+#    - bind : Écouter uniquement sur localhost ou IP spécifique
+#    - TLS/SSL : Chiffrer les communications
+#
+# 3. TESTER LA POLICY :
+#    # Depuis le backend : devrait fonctionner ✅
+#    kubectl exec -it <backend-pod> -n greenwatt -- sh
+#    nc -zv redis 6379
+#    # → Connection successful
+#
+#    # Depuis le frontend : devrait échouer ❌
+#    kubectl exec -it <frontend-pod> -n greenwatt -- sh
+#    nc -zv redis 6379
+#    # → Connection timeout
+#
+# 4. REDIS COMMANDS (si accès autorisé) :
+#    kubectl exec -it <backend-pod> -n greenwatt -- sh
+#    redis-cli -h redis -p 6379
+#    > PING
+#    PONG
+#    > KEYS installations:*
+#    > GET installations:all:all
+#
+# 5. LABELS REQUIS :
+#    # Vérifier le Deployment Redis
+#    kubectl get deployment redis -n greenwatt -o yaml | grep -A5 labels
+#    # Doit avoir : app=greenwatt, component=redis
+#
+# 6. DEBUGGING :
+#    # Voir la policy appliquée
+#    kubectl describe networkpolicy redis-network-policy -n greenwatt
+#
+#    # Logs Redis
+#    kubectl logs <redis-pod> -n greenwatt
+#
+# 7. ALTERNATIVE : Redis AUTH
+#    # Ajouter un mot de passe Redis
+#    kubectl create secret generic redis-password \
+#      --from-literal=password=SecureRedisPass123 -n greenwatt
+#
+#    # Dans le Deployment Redis, ajouter :
+#    command: ["redis-server"]
+#    args: ["--requirepass", "$(REDIS_PASSWORD)"]
+#    env:
+#    - name: REDIS_PASSWORD
+#      valueFrom:
+#        secretKeyRef:
+#          name: redis-password
+#          key: password
+#
+#    # Dans le backend, mettre à jour REDIS_URL :
+#    REDIS_URL=redis://:SecureRedisPass123@redis:6379
+#
+# ===========================================

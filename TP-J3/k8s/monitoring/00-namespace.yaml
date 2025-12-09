@@ -1,0 +1,23 @@
+# ===========================================
+# Monitoring Namespace
+# ===========================================
+# Namespace dédié pour la stack de monitoring (Prometheus + Grafana)
+#
+# ISOLATION :
+# - Sépare les composants de monitoring de l'application
+# - Permet des RBAC policies différentes
+# - Facilite la gestion et le cleanup
+#
+# ACCÈS :
+#   kubectl get all -n monitoring
+#   kubectl logs -n monitoring <pod-name>
+#
+# ===========================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    purpose: observability

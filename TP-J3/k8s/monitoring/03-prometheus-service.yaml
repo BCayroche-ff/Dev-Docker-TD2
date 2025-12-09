@@ -1,0 +1,144 @@
+# ===========================================
+# Prometheus Service
+# ===========================================
+# Expose Prometheus UI et API
+#
+# TYPE : ClusterIP (interne uniquement)
+# - Accessible depuis Grafana
+# - Accessible via port-forward pour le développement
+#
+# PORTS :
+# - 9090 : Prometheus UI et API
+#
+# ACCÈS :
+#   kubectl port-forward -n monitoring svc/prometheus-service 9090:9090
+#   http://localhost:9090
+#
+# UI PROMETHEUS :
+#   - /graph : Interface de requêtes PromQL
+#   - /targets : État des targets scrapées
+#   - /config : Configuration actuelle
+#   - /alerts : Alertes actives
+#
+# ===========================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: monitoring
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+spec:
+  type: ClusterIP  # Interne uniquement
+
+  selector:
+    app: prometheus
+
+  ports:
+  - name: web
+    protocol: TCP
+    port: 9090
+    targetPort: 9090
+
+  # === SESSION AFFINITY ===
+  # Pas nécessaire pour Prometheus (API stateless)
+  # sessionAffinity: ClientIP
+
+---
+# ===========================================
+# OPTION : NodePort pour accès externe (Minikube)
+# ===========================================
+# Si vous voulez accéder à Prometheus sans port-forward :
+#
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: prometheus-nodeport
+#   namespace: monitoring
+# spec:
+#   type: NodePort
+#   selector:
+#     app: prometheus
+#   ports:
+#   - name: web
+#     protocol: TCP
+#     port: 9090
+#     targetPort: 9090
+#     nodePort: 30090  # Accessible via http://<minikube-ip>:30090
+#
+# Commande : minikube service prometheus-nodeport -n monitoring
+
+---
+# ===========================================
+# OPTION : Ingress pour accès externe (Production)
+# ===========================================
+# Expose Prometheus via un sous-domaine
+#
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: prometheus-ingress
+#   namespace: monitoring
+#   annotations:
+#     nginx.ingress.kubernetes.io/rewrite-target: /
+#     # IMPORTANT : Protéger avec authentication !
+#     nginx.ingress.kubernetes.io/auth-type: basic
+#     nginx.ingress.kubernetes.io/auth-secret: basic-auth
+#     nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required'
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#   - host: prometheus.greenwatt.local
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: prometheus-service
+#             port:
+#               number: 9090
+#
+# Créer le secret pour basic auth :
+# htpasswd -c auth admin
+# kubectl create secret generic basic-auth --from-file=auth -n monitoring
+
+---
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. POURQUOI ClusterIP ?
+#    - Prometheus n'a pas besoin d'être exposé publiquement
+#    - Seuls Grafana et les admins doivent y accéder
+#    - Plus sécurisé (pas d'exposition externe)
+#
+# 2. ACCÈS POUR LE DÉVELOPPEMENT :
+#    - Port-forward : kubectl port-forward -n monitoring svc/prometheus-service 9090:9090
+#    - NodePort : Pour Minikube (port 30000-32767)
+#    - Ingress : Pour production avec authentication
+#
+# 3. SÉCURITÉ :
+#    - ⚠️ Prometheus UI n'a PAS d'authentification native !
+#    - Production : TOUJOURS ajouter basic auth via Ingress
+#    - Ou utiliser un reverse proxy (OAuth2 Proxy, Keycloak)
+#
+# 4. ALTERNATIVE : LoadBalancer (Cloud uniquement)
+#    - AWS : Crée un ELB
+#    - GCP : Crée un Load Balancer
+#    - Azure : Crée un Azure Load Balancer
+#    - Minikube : Reste en "pending" (pas de cloud provider)
+#
+# 5. ENDPOINTS PROMETHEUS :
+#    - GET  /api/v1/query        : Requête PromQL instantanée
+#    - GET  /api/v1/query_range  : Requête PromQL sur une période
+#    - GET  /api/v1/labels       : Liste des labels
+#    - GET  /api/v1/targets      : État des targets
+#    - POST /-/reload            : Recharger la config (--web.enable-lifecycle)
+#
+# ===========================================

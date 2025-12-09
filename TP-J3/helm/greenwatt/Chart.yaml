@@ -1,0 +1,61 @@
+# ===========================================
+# Helm Chart - GreenWatt Platform
+# ===========================================
+# Helm Chart pour déployer la plateforme GreenWatt sur Kubernetes
+#
+# UTILISATION :
+#   # Installation
+#   helm install greenwatt ./helm/greenwatt
+#
+#   # Installation avec values personnalisés
+#   helm install greenwatt ./helm/greenwatt -f helm/greenwatt/values-prod.yaml
+#
+#   # Upgrade
+#   helm upgrade greenwatt ./helm/greenwatt
+#
+#   # Uninstall
+#   helm uninstall greenwatt
+#
+# ===========================================
+
+apiVersion: v2
+name: greenwatt
+description: A Helm chart for GreenWatt Renewable Energy Monitoring Platform
+type: application
+
+# Chart version (incrémenté à chaque changement du chart)
+version: 1.0.0
+
+# Application version (version de l'application déployée)
+appVersion: "1.0.0"
+
+# Maintainers
+maintainers:
+  - name: GreenWatt Team
+    email: devops@greenwatt.local
+
+# Keywords for Helm Hub
+keywords:
+  - renewable-energy
+  - monitoring
+  - greenwatt
+  - solar
+  - wind
+
+# Sources
+sources:
+  - https://github.com/your-org/greenwatt
+
+# Icon URL (pour Helm Hub)
+# icon: https://greenwatt.com/logo.png
+
+# Dependencies (optional)
+# dependencies:
+#   - name: postgresql
+#     version: 12.1.0
+#     repository: https://charts.bitnami.com/bitnami
+#     condition: postgresql.enabled
+#   - name: redis
+#     version: 17.0.0
+#     repository: https://charts.bitnami.com/bitnami
+#     condition: redis.enabled

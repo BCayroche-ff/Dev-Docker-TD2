@@ -1,0 +1,169 @@
+# ===========================================
+# Prometheus ConfigMap
+# ===========================================
+# Configuration de Prometheus pour scraper les métriques
+#
+# SCRAPE TARGETS :
+# - Backend GreenWatt (endpoint /metrics)
+# - Kubernetes API server
+# - Node exporter (optionnel)
+# - cAdvisor (optionnel)
+#
+# SCRAPE INTERVAL :
+# - Global : 15s
+# - Backend : 10s (métriques applicatives)
+#
+# ===========================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    # ====================================
+    # GLOBAL CONFIGURATION
+    # ====================================
+    global:
+      scrape_interval: 15s      # Fréquence de collecte par défaut
+      evaluation_interval: 15s  # Fréquence d'évaluation des règles
+      external_labels:
+        cluster: 'greenwatt-cluster'
+        environment: 'production'
+
+    # ====================================
+    # ALERTING (optionnel)
+    # ====================================
+    # alerting:
+    #   alertmanagers:
+    #   - static_configs:
+    #     - targets:
+    #       - alertmanager:9093
+
+    # ====================================
+    # SCRAPE CONFIGURATIONS
+    # ====================================
+    scrape_configs:
+      # -------------------------------------
+      # Job 1 : GreenWatt Backend
+      # -------------------------------------
+      - job_name: 'greenwatt-backend'
+        scrape_interval: 10s      # Scrape plus fréquent pour l'application
+        scrape_timeout: 5s
+        metrics_path: '/metrics'  # Endpoint Prometheus
+
+        # Service discovery via Kubernetes
+        kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names:
+            - greenwatt
+
+        # Filtrer uniquement les Pods du backend
+        relabel_configs:
+        # Garder uniquement les Pods avec label app=greenwatt et component=backend
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: keep
+          regex: greenwatt
+        - source_labels: [__meta_kubernetes_pod_label_component]
+          action: keep
+          regex: backend
+
+        # Ajouter le nom du Pod comme label
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+
+        # Ajouter le namespace comme label
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+
+        # Ajouter le nom du node comme label
+        - source_labels: [__meta_kubernetes_pod_node_name]
+          target_label: node
+
+      # -------------------------------------
+      # Job 2 : Prometheus self-monitoring
+      # -------------------------------------
+      - job_name: 'prometheus'
+        static_configs:
+        - targets: ['localhost:9090']
+
+      # -------------------------------------
+      # Job 3 : Kubernetes API Server
+      # -------------------------------------
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+        - role: endpoints
+
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: default;kubernetes;https
+
+      # -------------------------------------
+      # Job 4 : Kubernetes Nodes (optionnel)
+      # -------------------------------------
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+        - role: node
+
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+        relabel_configs:
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+
+      # -------------------------------------
+      # Job 5 : Kubernetes Pods (tous)
+      # -------------------------------------
+      # Découvre automatiquement tous les Pods avec une annotation Prometheus
+      # Ajouter cette annotation au backend Deployment :
+      #   prometheus.io/scrape: "true"
+      #   prometheus.io/port: "5000"
+      #   prometheus.io/path: "/metrics"
+      #
+      # - job_name: 'kubernetes-pods'
+      #   kubernetes_sd_configs:
+      #   - role: pod
+      #
+      #   relabel_configs:
+      #   # Garder uniquement les Pods avec annotation prometheus.io/scrape=true
+      #   - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+      #     action: keep
+      #     regex: true
+      #
+      #   # Lire le port depuis l'annotation
+      #   - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+      #     action: replace
+      #     regex: ([^:]+)(?::\d+)?;(\d+)
+      #     replacement: $1:$2
+      #     target_label: __address__
+      #
+      #   # Lire le chemin depuis l'annotation
+      #   - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+      #     action: replace
+      #     target_label: __metrics_path__
+
+    # ====================================
+    # RULE FILES (optionnel)
+    # ====================================
+    # Fichiers de règles pour les alertes et les enregistrements
+    # rule_files:
+    #   - /etc/prometheus/rules/*.yml
+
+    # ====================================
+    # STORAGE (optionnel)
+    # ====================================
+    # Configuration de la rétention des données
+    # Configuré via les arguments de la ligne de commande :
+    # --storage.tsdb.retention.time=15d
+    # --storage.tsdb.path=/prometheus/data

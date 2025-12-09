@@ -1,0 +1,255 @@
+# ===========================================
+# GitHub Actions - Security Scanning avec Trivy
+# ===========================================
+# Scanne les images Docker pour détecter les vulnérabilités (CVE)
+#
+# TRIVY :
+# - Scanner de sécurité open-source (Aqua Security)
+# - Détecte les CVE dans : OS packages, dependencies, config files
+# - Support : Docker images, filesystems, Git repos, Kubernetes
+#
+# DÉCLENCHEMENT :
+# - Push sur main/master
+# - Pull requests
+# - Schedule quotidien (3h UTC)
+# - Manual workflow dispatch
+#
+# IMAGES SCANNÉES :
+# - greenwatt-backend
+# - greenwatt-frontend
+#
+# ACTIONS SI CVE DÉTECTÉES :
+# - CRITICAL/HIGH : Workflow échoue ❌
+# - MEDIUM/LOW : Warning seulement ⚠️
+#
+# ===========================================
+
+name: Security Scan with Trivy
+
+on:
+  # Scan on push to main branch
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/security-scan.yml'
+
+  # Scan on pull requests
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+
+  # Daily scan at 3 AM UTC
+  schedule:
+    - cron: '0 3 * * *'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  # ===================================
+  # JOB 1 : Scan Backend Image
+  # ===================================
+  scan-backend:
+    name: Scan Backend Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Build backend image
+    - name: Build Backend Image
+      run: |
+        docker build -t greenwatt-backend:${{ github.sha }} ./backend
+        docker tag greenwatt-backend:${{ github.sha }} greenwatt-backend:latest
+
+    # Run Trivy vulnerability scanner
+    - name: Run Trivy scanner on Backend
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'greenwatt-backend:latest'
+        format: 'sarif'
+        output: 'trivy-backend-results.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '1'  # Fail workflow if CRITICAL or HIGH found
+
+    # Upload results to GitHub Security tab
+    - name: Upload Trivy results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()  # Upload even if scan fails
+      with:
+        sarif_file: 'trivy-backend-results.sarif'
+        category: 'backend-image'
+
+    # Generate human-readable report
+    - name: Generate Trivy report (table format)
+      if: always()
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'greenwatt-backend:latest'
+        format: 'table'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+
+  # ===================================
+  # JOB 2 : Scan Frontend Image
+  # ===================================
+  scan-frontend:
+    name: Scan Frontend Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Build frontend image
+    - name: Build Frontend Image
+      run: |
+        docker build -t greenwatt-frontend:${{ github.sha }} ./frontend
+        docker tag greenwatt-frontend:${{ github.sha }} greenwatt-frontend:latest
+
+    # Run Trivy vulnerability scanner
+    - name: Run Trivy scanner on Frontend
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'greenwatt-frontend:latest'
+        format: 'sarif'
+        output: 'trivy-frontend-results.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '1'  # Fail workflow if CRITICAL or HIGH found
+
+    # Upload results to GitHub Security tab
+    - name: Upload Trivy results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-frontend-results.sarif'
+        category: 'frontend-image'
+
+    # Generate human-readable report
+    - name: Generate Trivy report (table format)
+      if: always()
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'greenwatt-frontend:latest'
+        format: 'table'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+
+  # ===================================
+  # JOB 3 : Scan Kubernetes Manifests
+  # ===================================
+  scan-kubernetes:
+    name: Scan Kubernetes Manifests
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Scan K8s manifests for misconfigurations
+    - name: Run Trivy scanner on K8s manifests
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'config'
+        scan-ref: './k8s'
+        format: 'sarif'
+        output: 'trivy-k8s-results.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'  # Don't fail on K8s misconfigs (just warn)
+
+    # Upload K8s scan results
+    - name: Upload K8s scan results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-k8s-results.sarif'
+        category: 'kubernetes-manifests'
+
+    # Generate report
+    - name: Generate K8s scan report
+      if: always()
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'config'
+        scan-ref: './k8s'
+        format: 'table'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+
+---
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. TRIVY SCAN TYPES :
+#    - image    : Scanne une image Docker
+#    - fs       : Scanne un filesystem
+#    - repo     : Scanne un repo Git
+#    - config   : Scanne les fichiers de config (Dockerfile, K8s, Terraform)
+#
+# 2. SEVERITY LEVELS :
+#    - CRITICAL : Exploitable, high impact
+#    - HIGH     : Exploitable, medium impact
+#    - MEDIUM   : Limited exploitability
+#    - LOW      : Minimal risk
+#    - UNKNOWN  : CVE not rated yet
+#
+# 3. EXIT CODES :
+#    - exit-code: '0' : Never fail (warn only)
+#    - exit-code: '1' : Fail if vulnerabilities found
+#    - Utile pour bloquer les merges dangereux
+#
+# 4. FORMATS DE SORTIE :
+#    - table  : Human-readable table
+#    - json   : Machine-readable JSON
+#    - sarif  : Pour GitHub Security tab
+#    - template : Custom Go template
+#
+# 5. IGNORER DES CVE :
+#    Créer .trivyignore à la racine :
+#    # Ignore specific CVE
+#    CVE-2023-12345
+#    # Ignore until date
+#    CVE-2023-67890 exp:2024-12-31
+#
+# 6. GITHUB SECURITY TAB :
+#    - Les résultats SARIF apparaissent dans :
+#      Security > Code scanning alerts
+#    - Nécessite upload-sarif action
+#
+# 7. CONFIGURATION AVANCÉE :
+#    Créer trivy.yaml à la racine :
+#    severity:
+#      - CRITICAL
+#      - HIGH
+#    ignore-unfixed: true
+#    timeout: 10m
+#
+# 8. TRIVY DB UPDATES :
+#    - Trivy télécharge automatiquement la DB de CVE
+#    - Mise à jour toutes les 6h
+#    - Offline mode possible (--skip-db-update)
+#
+# 9. BEST PRACTICES :
+#    - Scannez AVANT de pusher les images
+#    - Automatisez avec CI/CD
+#    - Corrigez CRITICAL/HIGH rapidement
+#    - Documentez les ignores (pourquoi ? jusqu'à quand ?)
+#    - Re-scannez régulièrement (schedule)
+#
+# 10. ALTERNATIVES :
+#    - Snyk
+#    - Grype (Anchore)
+#    - Clair (CoreOS)
+#    - Docker Scout
+#
+# ===========================================

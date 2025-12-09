@@ -1,0 +1,150 @@
+# ===========================================
+# Network Policy - Backend
+# ===========================================
+# Autorise le trafic UNIQUEMENT :
+# - Ingress : Depuis le Frontend
+# - Ingress : Depuis Prometheus (scraping /metrics)
+# - Egress  : Vers PostgreSQL (port 5432)
+# - Egress  : Vers Redis (port 6379)
+# - Egress  : Vers DNS (port 53) pour résolution de noms
+#
+# BLOQUE :
+# - Tout autre trafic entrant
+# - Tout autre trafic sortant (Internet, etc.)
+#
+# ===========================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-network-policy
+  namespace: greenwatt
+  labels:
+    app: greenwatt
+    component: backend
+    security: network-policy
+spec:
+  # Appliquer uniquement aux Pods backend
+  podSelector:
+    matchLabels:
+      app: greenwatt
+      component: backend
+
+  policyTypes:
+  - Ingress
+  - Egress
+
+  # === RÈGLES INGRESS (trafic entrant) ===
+  ingress:
+  # Règle 1 : Autoriser le frontend
+  - from:
+    - podSelector:
+        matchLabels:
+          app: greenwatt
+          component: frontend
+    ports:
+    - protocol: TCP
+      port: 5000
+
+  # Règle 2 : Autoriser Prometheus (metrics scraping)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+      podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 5000  # Endpoint /metrics
+
+  # === RÈGLES EGRESS (trafic sortant) ===
+  egress:
+  # Règle 1 : Autoriser PostgreSQL
+  - to:
+    - podSelector:
+        matchLabels:
+          app: greenwatt
+          component: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  # Règle 2 : Autoriser Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: greenwatt
+          component: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # Règle 3 : Autoriser DNS (résolution de noms)
+  # CRUCIAL : Sans DNS, impossible de résoudre "postgres", "redis", etc.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# ===========================================
+# NOTES PÉDAGOGIQUES
+# ===========================================
+#
+# 1. POURQUOI DNS EST CRUCIAL ?
+#    - Sans règle DNS, les Pods ne peuvent pas résoudre "postgres" → "10.x.x.x"
+#    - Symptôme : "getaddrinfo ENOTFOUND postgres"
+#    - Solution : Autoriser UDP/TCP 53 vers kube-system/kube-dns
+#
+# 2. SÉLECTEURS :
+#    - podSelector : Sélectionne des Pods dans le MÊME namespace
+#    - namespaceSelector : Sélectionne des Pods dans un AUTRE namespace
+#    - Combiner les deux (AND) :
+#      - namespaceSelector: {...}
+#        podSelector: {...}
+#
+# 3. PROMETHEUS METRICS :
+#    - Prometheus est dans le namespace "monitoring"
+#    - Il doit pouvoir scraper /metrics sur le backend
+#    - namespaceSelector + podSelector permettent cet accès
+#
+# 4. TESTER LA POLICY :
+#    # Depuis un Pod backend, vérifier connectivité
+#    kubectl exec -it <backend-pod> -n greenwatt -- sh
+#
+#    # PostgreSQL : devrait fonctionner ✅
+#    nc -zv postgres 5432
+#
+#    # Redis : devrait fonctionner ✅
+#    nc -zv redis 6379
+#
+#    # DNS : devrait fonctionner ✅
+#    nslookup postgres
+#
+#    # Internet : devrait échouer ❌
+#    curl google.com
+#
+# 5. LABELS REQUIS :
+#    - Vérifier que les Deployments ont les bons labels
+#    - Backend : app=greenwatt, component=backend
+#    - Frontend : app=greenwatt, component=frontend
+#    - PostgreSQL : app=greenwatt, component=postgres
+#    - Redis : app=greenwatt, component=redis
+#
+# 6. DEBUGGING :
+#    # Voir les endpoints autorisés
+#    kubectl describe networkpolicy backend-network-policy -n greenwatt
+#
+#    # Logs du backend si connexion échoue
+#    kubectl logs <backend-pod> -n greenwatt
+#
+# ===========================================
