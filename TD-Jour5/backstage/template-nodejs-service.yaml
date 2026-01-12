@@ -95,32 +95,30 @@ spec:
           replicas: ${{ parameters.replicas }}
           criticality: ${{ parameters.criticality }}
 
-    # Étape 2: Publier sur GitHub (si configuré)
-    - id: publish
-      name: Publier le repository
-      action: publish:github
+    # Étape 2: Log des fichiers générés (pour le TP)
+    - id: log-result
+      name: Afficher le résultat
+      action: debug:log
       input:
-        allowedHosts: ['github.com']
-        repoUrl: github.com?owner=techmarket&repo=${{ parameters.serviceName }}
-        description: ${{ parameters.description }}
-        defaultBranch: main
-
-    # Étape 3: Enregistrer dans le catalogue Backstage
-    - id: register
-      name: Enregistrer dans Backstage
-      action: catalog:register
-      input:
-        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
-        catalogInfoPath: '/catalog-info.yaml'
+        message: "Service ${{ parameters.serviceName }} généré avec succès !"
+        listWorkspace: true
 
   # Sorties affichées à l'utilisateur
   output:
     links:
-      - title: Repository GitHub
-        url: ${{ steps.publish.output.remoteUrl }}
-      - title: Voir dans le Catalogue
-        icon: catalog
-        entityRef: ${{ steps.register.output.entityRef }}
+      - title: Documentation Backstage
+        url: https://backstage.io/docs
+    text:
+      - title: Fichiers générés
+        content: |
+          Le service **${{ parameters.serviceName }}** a été généré avec :
+          - package.json
+          - server.js (Express avec health checks)
+          - Dockerfile (multi-stage, non-root)
+          - catalog-info.yaml
+          - k8s/deployment.yaml
+
+          En production, ces fichiers seraient publiés sur GitHub automatiquement.
 
 ---
 # Exemple de structure skeleton (normalement dans un dossier séparé)
