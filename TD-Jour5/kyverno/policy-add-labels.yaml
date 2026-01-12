@@ -1,0 +1,64 @@
+# Policy: Ajouter automatiquement des labels standards
+# Pourquoi: Plutôt que bloquer, on enrichit automatiquement les ressources
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: add-default-labels
+  annotations:
+    policies.kyverno.io/title: Ajouter les labels par défaut
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: Pod, Deployment
+    policies.kyverno.io/description: |
+      Ajoute automatiquement des labels standards aux ressources :
+      - managed-by: kyverno (indique que la ressource a été modifiée)
+      - platform: techmarket (identifie l'appartenance à la plateforme)
+      - cost-center: techmarket (pour le suivi des coûts)
+spec:
+  background: true
+  rules:
+    - name: add-labels-to-pods
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      # Exclure les namespaces système
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              # Le + signifie "ajouter seulement si absent"
+              +(managed-by): kyverno
+              +(platform): techmarket
+              +(cost-center): techmarket
+    - name: add-labels-to-deployments
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              +(managed-by): kyverno
+              +(platform): techmarket
+          spec:
+            template:
+              metadata:
+                labels:
+                  +(managed-by): kyverno
+                  +(platform): techmarket

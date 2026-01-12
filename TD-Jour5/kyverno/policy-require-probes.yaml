@@ -1,0 +1,82 @@
+# Policy: Exiger readinessProbe et livenessProbe
+# Pourquoi: Sans probes, Kubernetes route du trafic vers des pods non prêts
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probes
+  annotations:
+    policies.kyverno.io/title: Exiger les health probes
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: |
+      Tous les Deployments doivent définir readinessProbe et livenessProbe.
+      - readinessProbe: Indique quand le pod est prêt à recevoir du trafic
+      - livenessProbe: Indique si le pod est en vie (sinon, restart)
+      Sans ces probes, le trafic peut être routé vers des pods non prêts.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-readiness-probe
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+      # Exclure les namespaces système
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+                - backstage
+                - litmus
+                - tekton-pipelines
+                - tekton-pipelines-resolvers
+      validate:
+        message: |
+          Les Deployments doivent avoir une readinessProbe définie.
+          Sans readinessProbe, le trafic peut être routé vers des pods non prêts,
+          causant des erreurs 503.
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: "*"
+                    readinessProbe:
+                      httpGet:
+                        path: "?*"
+                        port: "?*"
+    - name: require-liveness-probe
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+                - backstage
+                - litmus
+                - tekton-pipelines
+                - tekton-pipelines-resolvers
+      validate:
+        message: |
+          Les Deployments doivent avoir une livenessProbe définie.
+          Sans livenessProbe, Kubernetes ne peut pas détecter si un pod est bloqué.
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: "*"
+                    livenessProbe:
+                      httpGet:
+                        path: "?*"
+                        port: "?*"

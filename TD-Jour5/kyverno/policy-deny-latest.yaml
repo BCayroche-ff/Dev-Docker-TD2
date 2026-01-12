@@ -1,0 +1,43 @@
+# Policy: Interdire le tag :latest
+# Pourquoi: Le tag :latest est mutable et rend les déploiements non reproductibles
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: deny-latest-tag
+  annotations:
+    policies.kyverno.io/title: Interdire le tag latest
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: |
+      Le tag :latest est interdit car il est mutable et empêche
+      les rollbacks reproductibles. Utilisez des tags versionnés (v1.0.0, sha256:...)
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: deny-latest-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+                - backstage
+                - litmus
+                - tekton-pipelines
+                - tekton-pipelines-resolvers
+      validate:
+        message: |
+          Le tag ':latest' est interdit.
+          Image: {{ request.object.spec.containers[*].image }}
+          Utilisez un tag versionné (ex: v1.0.0, 1.2.3, sha256:...)
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"

@@ -1,0 +1,176 @@
+# Chaos Experiment: Pod Delete sur Payment Service
+# Cet experiment teste la résilience du payment-service en supprimant aléatoirement des pods
+#
+# Objectif: Valider que:
+# 1. Kubernetes recrée les pods supprimés
+# 2. Le service reste disponible (grâce aux replicas)
+# 3. Le PodDisruptionBudget est respecté (min 2 pods)
+#
+# Hypothèse: Le payment-service devrait rester fonctionnel car:
+# - Il a 3 replicas
+# - Le PDB garantit au moins 2 pods disponibles
+# - Le Service load-balance entre les pods restants
+
+---
+# RBAC: Permissions pour Litmus
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: litmus-admin
+  namespace: techmarket
+  labels:
+    app: litmus
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: litmus-admin
+  namespace: techmarket
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec", "pods/log", "events", "services"]
+    verbs: ["get", "list", "watch", "delete", "deletecollection", "create", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete", "deletecollection"]
+  - apiGroups: ["litmuschaos.io"]
+    resources: ["chaosengines", "chaosexperiments", "chaosresults"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: litmus-admin
+  namespace: techmarket
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: litmus-admin
+subjects:
+  - kind: ServiceAccount
+    name: litmus-admin
+    namespace: techmarket
+
+---
+# ChaosExperiment Definition
+# Définit ce que fait l'experiment (suppression de pods)
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosExperiment
+metadata:
+  name: pod-delete
+  namespace: techmarket
+  labels:
+    app: payment-service
+    experiment: pod-delete
+spec:
+  definition:
+    scope: Namespaced
+    permissions:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["delete", "get", "list", "watch"]
+      - apiGroups: ["apps"]
+        resources: ["deployments", "replicasets"]
+        verbs: ["get", "list"]
+      - apiGroups: ["batch"]
+        resources: ["jobs"]
+        verbs: ["create", "delete", "get", "list", "watch"]
+      - apiGroups: ["litmuschaos.io"]
+        resources: ["chaosresults"]
+        verbs: ["create", "patch", "update"]
+    image: "litmuschaos/go-runner:latest"
+    imagePullPolicy: Always
+    args:
+      - -c
+      - ./experiments -name pod-delete
+    command:
+      - /bin/bash
+    env:
+      # Nombre total de pods à supprimer pendant l'experiment
+      - name: TOTAL_CHAOS_DURATION
+        value: "30"
+      # Intervalle entre chaque suppression (secondes)
+      - name: CHAOS_INTERVAL
+        value: "10"
+      # Forcer la suppression ou attendre graceful shutdown
+      - name: FORCE
+        value: "false"
+      # Nombre de pods à supprimer par itération
+      - name: PODS_AFFECTED_PERC
+        value: "33"
+    labels:
+      name: pod-delete
+      app.kubernetes.io/part-of: litmus
+
+---
+# ChaosEngine: Lance l'experiment
+# C'est ce qui déclenche réellement le chaos
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: payment-service-chaos
+  namespace: techmarket
+  labels:
+    app: payment-service
+spec:
+  # État de l'engine: active, stop, abort
+  engineState: "active"
+
+  # Application cible
+  appinfo:
+    appns: "techmarket"
+    applabel: "app=payment-service"
+    appkind: "deployment"
+
+  # Service Account pour exécuter l'experiment
+  chaosServiceAccount: litmus-admin
+
+  # Experiments à exécuter
+  experiments:
+    - name: pod-delete
+      spec:
+        components:
+          env:
+            # Durée totale du chaos (secondes)
+            - name: TOTAL_CHAOS_DURATION
+              value: "30"
+            # Intervalle entre suppressions
+            - name: CHAOS_INTERVAL
+              value: "10"
+            # Pourcentage de pods à supprimer
+            - name: PODS_AFFECTED_PERC
+              value: "33"
+            # Ne pas forcer (respecter graceful shutdown)
+            - name: FORCE
+              value: "false"
+            # Séquence: parallel ou serial
+            - name: SEQUENCE
+              value: "serial"
+
+---
+# Note pédagogique: Comment observer l'experiment
+#
+# 1. Avant l'experiment:
+#    kubectl get pods -n techmarket -l app=payment-service
+#    # Devrait montrer 3 pods Running
+#
+# 2. Appliquer l'experiment:
+#    kubectl apply -f litmus/pod-delete-experiment.yaml
+#
+# 3. Pendant l'experiment (dans un autre terminal):
+#    watch kubectl get pods -n techmarket -l app=payment-service
+#    # Observer les pods se faire supprimer et recréer
+#
+# 4. Vérifier le résultat:
+#    kubectl get chaosresult -n techmarket
+#    kubectl describe chaosresult payment-service-chaos-pod-delete -n techmarket
+#
+# 5. Vérifier que le service est resté disponible:
+#    # Si vous avez accès au service:
+#    curl http://localhost:30082/health
+#
+# 6. Arrêter l'experiment si nécessaire:
+#    kubectl patch chaosengine payment-service-chaos -n techmarket --type merge -p '{"spec":{"engineState":"stop"}}'

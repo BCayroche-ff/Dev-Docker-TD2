@@ -1,0 +1,98 @@
+# Kubernetes Manifest - ${{ values.serviceName }}
+# Généré par le Golden Path Template TechMarket
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${{ values.serviceName }}
+  namespace: techmarket
+  labels:
+    app: ${{ values.serviceName }}
+    team: ${{ values.owner }}
+    version: v1.0.0
+spec:
+  replicas: ${{ values.replicas }}
+  selector:
+    matchLabels:
+      app: ${{ values.serviceName }}
+  template:
+    metadata:
+      labels:
+        app: ${{ values.serviceName }}
+        team: ${{ values.owner }}
+        version: v1.0.0
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+        - name: ${{ values.serviceName }}
+          image: techmarket/${{ values.serviceName }}:v1.0.0
+          ports:
+            - containerPort: ${{ values.port }}
+          env:
+            - name: PORT
+              value: "${{ values.port }}"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          # Probes obligatoires (exigées par Kyverno)
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: ${{ values.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: ${{ values.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${{ values.serviceName }}
+  namespace: techmarket
+  labels:
+    app: ${{ values.serviceName }}
+spec:
+  selector:
+    app: ${{ values.serviceName }}
+  ports:
+    - port: ${{ values.port }}
+      targetPort: ${{ values.port }}
+  type: ClusterIP
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ${{ values.serviceName }}-hpa
+  namespace: techmarket
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ${{ values.serviceName }}
+  minReplicas: ${{ values.replicas }}
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

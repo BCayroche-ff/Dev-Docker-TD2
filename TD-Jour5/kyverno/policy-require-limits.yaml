@@ -1,0 +1,46 @@
+# Policy: Exiger des resource limits
+# Pourquoi: Sans limits, un container peut monopoliser les ressources du node
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Exiger les resource limits
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: |
+      Tous les containers doivent définir des limits CPU et mémoire
+      pour éviter qu'un container ne monopolise les ressources du node.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      # Exclure les namespaces système
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+                - backstage
+                - litmus
+                - tekton-pipelines
+      validate:
+        message: |
+          Tous les containers doivent avoir des resource limits définis.
+          Ajoutez resources.limits.memory et resources.limits.cpu à votre container.
+        pattern:
+          spec:
+            containers:
+              - name: "*"
+                resources:
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"

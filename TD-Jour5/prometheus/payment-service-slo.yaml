@@ -1,0 +1,150 @@
+# SLO Rules pour le Payment Service TechMarket
+# Ces règles définissent les indicateurs de fiabilité (SLIs) et calculent le budget d'erreur
+#
+# SLOs définis:
+# - Availability: 99.9% (43.2 minutes de downtime autorisé par mois)
+# - Latency P95: < 500ms
+# - Latency P99: < 1s
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-service-slo-rules
+  namespace: techmarket
+  labels:
+    app: prometheus
+    component: rules
+data:
+  payment-service-slo.yaml: |
+    groups:
+      # Recording Rules - Calculent les SLIs
+      - name: payment-service-sli
+        interval: 30s
+        rules:
+          # SLI 1: Success Rate (Availability)
+          # Ratio de requêtes réussies (codes HTTP != 5xx) sur le total
+          - record: payment_service:success_rate:ratio
+            expr: |
+              sum(rate(http_requests_total{service="payment-service",code!~"5.."}[5m]))
+              /
+              sum(rate(http_requests_total{service="payment-service"}[5m]))
+
+          # SLI 2: Latency P95
+          # 95% des requêtes doivent répondre en moins de X ms
+          - record: payment_service:latency:p95
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(http_request_duration_seconds_bucket{service="payment-service"}[5m])) by (le)
+              )
+
+          # SLI 3: Latency P99
+          # 99% des requêtes doivent répondre en moins de X ms
+          - record: payment_service:latency:p99
+            expr: |
+              histogram_quantile(0.99,
+                sum(rate(http_request_duration_seconds_bucket{service="payment-service"}[5m])) by (le)
+              )
+
+          # Error Budget Burn Rate (sur 1 heure)
+          # Si > 1, on consomme le budget plus vite que prévu
+          # Si > 14.4, on va épuiser le budget mensuel en 2 jours
+          - record: payment_service:error_budget:burn_rate_1h
+            expr: |
+              (
+                1 - (
+                  sum(rate(http_requests_total{service="payment-service",code!~"5.."}[1h]))
+                  /
+                  sum(rate(http_requests_total{service="payment-service"}[1h]))
+                )
+              ) / (1 - 0.999)
+
+          # Error Budget Remaining (pourcentage)
+          # Basé sur une fenêtre de 30 jours
+          - record: payment_service:error_budget:remaining_percent
+            expr: |
+              1 - (
+                sum(increase(http_requests_total{service="payment-service",code=~"5.."}[30d]))
+                /
+                (sum(increase(http_requests_total{service="payment-service"}[30d])) * 0.001)
+              )
+
+      # Alerting Rules - Déclenchent des alertes basées sur les SLIs
+      - name: payment-service-alerts
+        rules:
+          # Alerte: Taux d'erreur élevé (SLO Availability violé)
+          - alert: PaymentServiceHighErrorRate
+            expr: payment_service:success_rate:ratio < 0.999
+            for: 5m
+            labels:
+              severity: critical
+              service: payment-service
+              slo: availability
+            annotations:
+              summary: "Payment Service: SLO Availability violé"
+              description: |
+                Le taux de succès du payment-service est de {{ $value | humanizePercentage }}.
+                SLO: 99.9%
+                Action: Investiguer les erreurs 5xx dans les logs.
+              runbook_url: "https://wiki.techmarket.io/runbooks/payment-service-high-error-rate"
+
+          # Alerte: Latence élevée (SLO Latency violé)
+          - alert: PaymentServiceHighLatency
+            expr: payment_service:latency:p95 > 0.5
+            for: 5m
+            labels:
+              severity: warning
+              service: payment-service
+              slo: latency
+            annotations:
+              summary: "Payment Service: SLO Latency violé"
+              description: |
+                La latence P95 du payment-service est de {{ $value | humanizeDuration }}.
+                SLO: < 500ms
+                Action: Vérifier les dépendances (DB, services externes).
+              runbook_url: "https://wiki.techmarket.io/runbooks/payment-service-high-latency"
+
+          # Alerte: Error Budget Fast Burn (consommation rapide du budget)
+          - alert: PaymentServiceFastBurn
+            expr: payment_service:error_budget:burn_rate_1h > 14.4
+            for: 2m
+            labels:
+              severity: critical
+              service: payment-service
+              slo: error_budget
+            annotations:
+              summary: "Payment Service: Error Budget consommé trop rapidement"
+              description: |
+                Burn rate: {{ $value }}x (normal = 1x)
+                À ce rythme, le budget mensuel sera épuisé en ~2 jours.
+                Action: Intervention immédiate requise!
+              runbook_url: "https://wiki.techmarket.io/runbooks/payment-service-fast-burn"
+
+          # Alerte: Error Budget Low (budget presque épuisé)
+          - alert: PaymentServiceLowErrorBudget
+            expr: payment_service:error_budget:remaining_percent < 0.25
+            for: 10m
+            labels:
+              severity: warning
+              service: payment-service
+              slo: error_budget
+            annotations:
+              summary: "Payment Service: Error Budget bas (< 25%)"
+              description: |
+                Il reste {{ $value | humanizePercentage }} du budget d'erreur mensuel.
+                Action: Ralentir les déploiements, focus sur la stabilisation.
+
+---
+# Note pédagogique: Comment calculer l'Error Budget
+#
+# SLO Availability = 99.9%
+# Période = 30 jours = 43200 minutes
+#
+# Error Budget = (100% - 99.9%) × 43200 minutes
+# Error Budget = 0.1% × 43200 = 43.2 minutes de downtime autorisé
+#
+# Burn Rate = Taux de consommation du budget
+# - Burn Rate = 1 → consommation normale, budget durera 30 jours
+# - Burn Rate = 2 → consommation 2x plus rapide, budget épuisé en 15 jours
+# - Burn Rate = 14.4 → consommation critique, budget épuisé en ~2 jours
+#
+# Formule: Burn Rate = (1 - Actual Success Rate) / (1 - SLO)

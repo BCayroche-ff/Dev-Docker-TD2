@@ -1,0 +1,140 @@
+# Software Template - Golden Path pour microservice Node.js
+# Ce template génère un nouveau microservice avec toutes les bonnes pratiques intégrées
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: nodejs-microservice-template
+  title: Node.js Microservice (Golden Path)
+  description: |
+    Crée un nouveau microservice Node.js/Express avec :
+    - Dockerfile multi-stage sécurisé (non-root)
+    - Health checks (liveness + readiness)
+    - Métriques Prometheus (prom-client)
+    - Logging structuré (winston)
+    - Manifest Kubernetes complet
+    - catalog-info.yaml pour Backstage
+  tags:
+    - nodejs
+    - express
+    - recommended
+    - golden-path
+spec:
+  owner: team-platform
+  type: service
+
+  # Paramètres demandés à l'utilisateur
+  parameters:
+    - title: Informations du Service
+      required:
+        - serviceName
+        - description
+        - owner
+      properties:
+        serviceName:
+          title: Nom du Service
+          type: string
+          description: Nom unique du microservice (ex. inventory-service)
+          pattern: '^[a-z0-9-]+$'
+          ui:autofocus: true
+        description:
+          title: Description
+          type: string
+          description: Description courte du service
+        owner:
+          title: Équipe Propriétaire
+          type: string
+          description: Équipe responsable du service
+          enum:
+            - team-frontend
+            - team-backend
+            - team-payments
+            - team-platform
+          enumNames:
+            - Frontend Team
+            - Backend Team
+            - Payments Team
+            - Platform Team
+
+    - title: Configuration Technique
+      properties:
+        port:
+          title: Port HTTP
+          type: integer
+          default: 8080
+          description: Port sur lequel le service écoute
+        replicas:
+          title: Nombre de Replicas
+          type: integer
+          default: 2
+          minimum: 1
+          maximum: 10
+          description: Nombre de pods en production
+        criticality:
+          title: Criticité
+          type: string
+          default: medium
+          enum:
+            - low
+            - medium
+            - high
+          description: Niveau de criticité (impact sur SLOs et alerting)
+
+  # Étapes d'exécution du template
+  steps:
+    # Étape 1: Générer les fichiers à partir du skeleton
+    - id: fetch-skeleton
+      name: Générer la structure du projet
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          serviceName: ${{ parameters.serviceName }}
+          description: ${{ parameters.description }}
+          owner: ${{ parameters.owner }}
+          port: ${{ parameters.port }}
+          replicas: ${{ parameters.replicas }}
+          criticality: ${{ parameters.criticality }}
+
+    # Étape 2: Publier sur GitHub (si configuré)
+    - id: publish
+      name: Publier le repository
+      action: publish:github
+      input:
+        allowedHosts: ['github.com']
+        repoUrl: github.com?owner=techmarket&repo=${{ parameters.serviceName }}
+        description: ${{ parameters.description }}
+        defaultBranch: main
+
+    # Étape 3: Enregistrer dans le catalogue Backstage
+    - id: register
+      name: Enregistrer dans Backstage
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+
+  # Sorties affichées à l'utilisateur
+  output:
+    links:
+      - title: Repository GitHub
+        url: ${{ steps.publish.output.remoteUrl }}
+      - title: Voir dans le Catalogue
+        icon: catalog
+        entityRef: ${{ steps.register.output.entityRef }}
+
+---
+# Exemple de structure skeleton (normalement dans un dossier séparé)
+# Ce fichier montre ce que le template génère
+# En réalité, le dossier skeleton/ contiendrait ces fichiers en tant que templates
+
+# Fichiers générés par le template:
+#
+# skeleton/
+# ├── package.json
+# ├── server.js
+# ├── Dockerfile
+# ├── catalog-info.yaml
+# └── k8s/
+#     └── deployment.yaml
+#
+# Chaque fichier utilise les variables ${{ values.serviceName }}, etc.

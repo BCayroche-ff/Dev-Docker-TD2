@@ -22,7 +22,8 @@ spec:
     spec:
       containers:
       - name: backend-api
-        image: ghcr.io/VOTRE_USER/backend-api:v1.0.0
+        image: techmarket/backend-api:v1.0.0
+        imagePullPolicy: Never  # Utiliser l'image chargée localement dans Kind
         ports:
         - containerPort: 8080
           name: http

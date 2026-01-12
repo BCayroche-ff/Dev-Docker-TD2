@@ -1,0 +1,74 @@
+# catalog-info.yaml - Backend API TechMarket
+# Ce fichier déclare le service backend dans le catalogue Backstage
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: backend-api
+  description: |
+    API REST principale de TechMarket.
+    Gère le catalogue produits et orchestre les appels vers le payment-service.
+  annotations:
+    backstage.io/kubernetes-id: backend-api
+    backstage.io/techdocs-ref: dir:.
+  tags:
+    - nodejs
+    - express
+    - api
+    - rest
+  links:
+    - url: http://localhost:30081
+      title: API Endpoint
+      icon: api
+spec:
+  type: service
+  lifecycle: production
+  owner: team-backend
+  system: techmarket-platform
+  # Le backend dépend du payment-service pour les paiements
+  dependsOn:
+    - component:default/payment-service
+  # APIs exposées par ce service
+  providesApis:
+    - products-api
+
+---
+# Définition de l'API Products
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: products-api
+  description: API REST pour la gestion des produits TechMarket
+spec:
+  type: openapi
+  lifecycle: production
+  owner: team-backend
+  definition: |
+    openapi: 3.0.0
+    info:
+      title: Products API
+      version: 1.0.0
+    paths:
+      /products:
+        get:
+          summary: Liste tous les produits
+          responses:
+            '200':
+              description: Liste des produits
+      /products/{id}:
+        get:
+          summary: Détail d'un produit
+          parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                type: string
+          responses:
+            '200':
+              description: Détail du produit
+      /health:
+        get:
+          summary: Health check
+          responses:
+            '200':
+              description: Service healthy

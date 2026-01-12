@@ -1,0 +1,118 @@
+# Task: Trivy Scan
+# Scanne une image Docker pour détecter les vulnérabilités (CVE)
+# Bloque le pipeline si des vulnérabilités critiques sont trouvées
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: trivy-scan
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/part-of: tekton-tasks
+  annotations:
+    tekton.dev/displayName: "Trivy Security Scan"
+    tekton.dev/categories: "Security"
+    tekton.dev/tags: "security, vulnerability, scan, trivy"
+spec:
+  description: |
+    Scanne une image Docker avec Trivy pour détecter les vulnérabilités.
+    Par défaut, échoue si des vulnérabilités CRITICAL ou HIGH sont trouvées.
+    Génère un rapport au format JSON.
+
+  params:
+    - name: IMAGE
+      description: Image à scanner (registry/repo:tag)
+      type: string
+    - name: SEVERITY
+      description: Niveaux de sévérité à détecter (CRITICAL,HIGH,MEDIUM,LOW)
+      type: string
+      default: "CRITICAL,HIGH"
+    - name: EXIT_CODE
+      description: Exit code si vulnérabilités trouvées (0=warning, 1=fail)
+      type: string
+      default: "1"
+    - name: IGNORE_UNFIXED
+      description: Ignorer les vulnérabilités sans fix disponible
+      type: string
+      default: "false"
+
+  workspaces:
+    - name: output
+      description: Workspace pour stocker le rapport
+
+  results:
+    - name: VULNERABILITIES_COUNT
+      description: Nombre de vulnérabilités trouvées
+    - name: SCAN_RESULT
+      description: Résultat du scan (PASS/FAIL)
+
+  steps:
+    - name: scan
+      image: aquasec/trivy:latest
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "Scanning image: $(params.IMAGE)"
+        echo "Severity filter: $(params.SEVERITY)"
+
+        # Options de scan
+        IGNORE_UNFIXED_FLAG=""
+        if [ "$(params.IGNORE_UNFIXED)" = "true" ]; then
+          IGNORE_UNFIXED_FLAG="--ignore-unfixed"
+        fi
+
+        # Exécuter le scan et sauvegarder le rapport
+        trivy image \
+          --severity $(params.SEVERITY) \
+          --format json \
+          --output $(workspaces.output.path)/trivy-report.json \
+          $IGNORE_UNFIXED_FLAG \
+          $(params.IMAGE) || true
+
+        # Compter les vulnérabilités
+        if [ -f "$(workspaces.output.path)/trivy-report.json" ]; then
+          VULN_COUNT=$(cat $(workspaces.output.path)/trivy-report.json | grep -o '"VulnerabilityID"' | wc -l)
+        else
+          VULN_COUNT=0
+        fi
+
+        echo -n "$VULN_COUNT" > $(results.VULNERABILITIES_COUNT.path)
+
+        # Déterminer le résultat
+        if [ "$VULN_COUNT" -gt 0 ] && [ "$(params.EXIT_CODE)" = "1" ]; then
+          echo -n "FAIL" > $(results.SCAN_RESULT.path)
+          echo "FAIL: $VULN_COUNT vulnerabilities found"
+          echo ""
+          echo "=== Vulnerability Report ==="
+          trivy image \
+            --severity $(params.SEVERITY) \
+            --format table \
+            $IGNORE_UNFIXED_FLAG \
+            $(params.IMAGE)
+          exit 1
+        else
+          echo -n "PASS" > $(results.SCAN_RESULT.path)
+          echo "PASS: Scan completed"
+          if [ "$VULN_COUNT" -gt 0 ]; then
+            echo "Warning: $VULN_COUNT vulnerabilities found (not blocking)"
+          fi
+        fi
+
+---
+# Note pédagogique: Pourquoi scanner les images ?
+#
+# Les images Docker contiennent:
+# - Le code de l'application
+# - L'OS de base (Alpine, Debian, etc.)
+# - Les dépendances (npm packages, Python libs, etc.)
+#
+# Chaque couche peut avoir des vulnérabilités (CVE).
+# Trivy détecte:
+# - CVE dans l'OS (apt, apk packages)
+# - CVE dans les dépendances applicatives
+# - Mauvaises configurations
+#
+# Intégration CI/CD:
+# - Scan à chaque build
+# - Bloquer si CRITICAL/HIGH
+# - Rapport pour audit

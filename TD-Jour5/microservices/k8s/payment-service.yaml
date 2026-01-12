@@ -22,7 +22,8 @@ spec:
     spec:
       containers:
       - name: payment-service
-        image: ghcr.io/VOTRE_USER/payment-service:v1.0.0
+        image: techmarket/payment-service:v1.0.0
+        imagePullPolicy: Never  # Utiliser l'image chargée localement dans Kind
         ports:
         - containerPort: 8081
           name: http

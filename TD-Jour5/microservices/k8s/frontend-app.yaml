@@ -22,7 +22,8 @@ spec:
     spec:
       containers:
       - name: frontend-app
-        image: ghcr.io/VOTRE_USER/frontend-app:v1.0.0
+        image: techmarket/frontend-app:v1.0.0
+        imagePullPolicy: Never  # Utiliser l'image chargée localement dans Kind
         ports:
         - containerPort: 3000
           name: http

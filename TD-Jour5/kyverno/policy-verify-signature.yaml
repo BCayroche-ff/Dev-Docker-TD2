@@ -1,0 +1,82 @@
+# Policy: Vérifier les signatures d'images (mode Audit)
+# Pourquoi: En production, on ne déploie que des images signées par notre CI
+# Note: En mode Audit pour le TP (ne bloque pas, juste log)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signature
+  annotations:
+    policies.kyverno.io/title: Vérifier les signatures d'images
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: |
+      Vérifie que les images sont signées avec Cosign.
+      En mode Audit pour le TP - en production, utiliser Enforce.
+
+      Comment signer une image:
+      1. cosign sign --yes ghcr.io/<user>/<image>:<tag>
+      2. La signature est stockée dans Rekor (log de transparence)
+      3. Kyverno vérifie la signature à l'admission
+spec:
+  # Mode Audit = log seulement, ne bloque pas
+  # En production, mettre "Enforce"
+  validationFailureAction: Audit
+  background: false
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      # Ne vérifier que les images de notre registry
+      # (commenté car on n'a pas de registry pour ce TP)
+      # preconditions:
+      #   all:
+      #     - key: "{{ request.object.spec.containers[*].image }}"
+      #       operator: AnyIn
+      #       value: ["ghcr.io/techmarket/*"]
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/techmarket/*"
+          # Désactiver mutateDigest en mode Audit
+          mutateDigest: false
+          attestors:
+            - entries:
+                - keyless:
+                    # Identité du signataire (email GitHub)
+                    subject: "*@techmarket.com"
+                    # Issuer OIDC (GitHub)
+                    issuer: "https://github.com/login/oauth"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          # En cas d'échec, ne pas bloquer (mode Audit)
+          required: false
+
+---
+# Note pédagogique:
+# En production avec un vrai registry, la policy ressemblerait à:
+#
+# apiVersion: kyverno.io/v1
+# kind: ClusterPolicy
+# metadata:
+#   name: verify-production-images
+# spec:
+#   validationFailureAction: Enforce  # BLOQUE si non signé
+#   rules:
+#     - name: verify-cosign-signature
+#       match:
+#         any:
+#           - resources:
+#               kinds:
+#                 - Pod
+#       verifyImages:
+#         - imageReferences:
+#             - "ghcr.io/votre-org/*"
+#           attestors:
+#             - entries:
+#                 - keyless:
+#                     subject: "ci-bot@votre-org.com"
+#                     issuer: "https://github.com/login/oauth"

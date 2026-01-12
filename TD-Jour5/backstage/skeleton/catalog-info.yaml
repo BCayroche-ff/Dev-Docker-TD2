@@ -1,0 +1,20 @@
+# catalog-info.yaml - ${{ values.serviceName }}
+# Généré par le Golden Path Template TechMarket
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.serviceName }}
+  description: ${{ values.description }}
+  annotations:
+    backstage.io/kubernetes-id: ${{ values.serviceName }}
+    backstage.io/techdocs-ref: dir:.
+    techmarket.io/criticality: ${{ values.criticality }}
+  tags:
+    - nodejs
+    - express
+    - golden-path
+spec:
+  type: service
+  lifecycle: production
+  owner: ${{ values.owner }}
+  system: techmarket-platform

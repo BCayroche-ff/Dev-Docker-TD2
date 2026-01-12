@@ -1,0 +1,74 @@
+# PipelineRun: Payment Service Build
+# Exécution du pipeline build-and-push pour le payment-service
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: payment-service-build-
+  namespace: tekton-pipelines
+  labels:
+    app: payment-service
+    pipeline: build-and-push
+  annotations:
+    tekton.dev/displayName: "Payment Service Build"
+spec:
+  pipelineRef:
+    name: build-and-push
+
+  # Paramètres pour ce run spécifique
+  params:
+    - name: git-url
+      # Note: Pour le TP, on utilise un repo local
+      # En production: https://github.com/techmarket/payment-service.git
+      value: "https://github.com/techmarket/payment-service"
+    - name: git-revision
+      value: "main"
+    - name: image-name
+      value: "techmarket/payment-service:v1.1.0"
+    - name: dockerfile-path
+      value: "./Dockerfile"
+    - name: context-path
+      value: "."
+    - name: scan-severity
+      value: "CRITICAL,HIGH"
+
+  # Workspace avec un volume temporaire
+  workspaces:
+    - name: shared-workspace
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+
+  # Timeout pour ce run
+  timeouts:
+    pipeline: "30m"
+    tasks: "20m"
+
+  # Pod template pour personnaliser les pods des tasks
+  taskRunTemplate:
+    podTemplate:
+      securityContext:
+        fsGroup: 65532
+
+---
+# Note: Comment exécuter ce PipelineRun
+#
+# Option 1: Avec kubectl
+# kubectl create -f tekton/pipelineruns/payment-service-run.yaml
+#
+# Option 2: Avec tkn CLI
+# tkn pipeline start build-and-push \
+#   -p git-url=https://github.com/techmarket/payment-service \
+#   -p git-revision=main \
+#   -p image-name=techmarket/payment-service:v1.1.0 \
+#   -w name=shared-workspace,volumeClaimTemplateFile=pvc.yaml \
+#   --showlog
+#
+# Suivre les logs:
+# tkn pipelinerun logs -f <pipelinerun-name>
+#
+# Voir le statut:
+# tkn pipelinerun describe <pipelinerun-name>

@@ -1,0 +1,91 @@
+# Task: Kaniko Build
+# Build une image Docker avec Kaniko (sans daemon Docker)
+# Plus sécurisé que Docker-in-Docker
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: kaniko-build
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/part-of: tekton-tasks
+  annotations:
+    tekton.dev/displayName: "Kaniko Build"
+    tekton.dev/categories: "Image Build"
+    tekton.dev/tags: "docker, kaniko, build, image"
+spec:
+  description: |
+    Build une image Docker avec Kaniko.
+    Kaniko ne nécessite pas le daemon Docker, ce qui est plus sécurisé.
+    L'image est poussée vers le registry spécifié.
+
+  params:
+    - name: IMAGE
+      description: Nom complet de l'image (registry/repo:tag)
+      type: string
+    - name: DOCKERFILE
+      description: Chemin vers le Dockerfile
+      type: string
+      default: ./Dockerfile
+    - name: CONTEXT
+      description: Contexte de build (dossier)
+      type: string
+      default: .
+    - name: EXTRA_ARGS
+      description: Arguments supplémentaires pour Kaniko
+      type: array
+      default: []
+
+  workspaces:
+    - name: source
+      description: Workspace contenant le code source
+    - name: dockerconfig
+      description: Workspace contenant les credentials Docker (.docker/config.json)
+      optional: true
+
+  results:
+    - name: IMAGE_DIGEST
+      description: Digest SHA de l'image buildée
+    - name: IMAGE_URL
+      description: URL complète de l'image
+
+  steps:
+    - name: build-and-push
+      image: gcr.io/kaniko-project/executor:latest
+      workingDir: $(workspaces.source.path)
+      args:
+        - --dockerfile=$(params.DOCKERFILE)
+        - --context=$(params.CONTEXT)
+        - --destination=$(params.IMAGE)
+        - --digest-file=$(results.IMAGE_DIGEST.path)
+        # Pour Kind/local: ne pas pousser, juste builder
+        - --no-push
+        - --tarPath=/workspace/image.tar
+        - $(params.EXTRA_ARGS[*])
+      securityContext:
+        runAsUser: 0  # Kaniko nécessite root pour builder
+
+    - name: write-url
+      image: alpine
+      script: |
+        #!/bin/sh
+        echo -n "$(params.IMAGE)" > $(results.IMAGE_URL.path)
+        echo "Image built: $(params.IMAGE)"
+        if [ -f "$(results.IMAGE_DIGEST.path)" ]; then
+          echo "Digest: $(cat $(results.IMAGE_DIGEST.path))"
+        fi
+
+---
+# Note pédagogique: Pourquoi Kaniko ?
+#
+# Docker-in-Docker (DinD) nécessite:
+# - Monter /var/run/docker.sock (risque de sécurité)
+# - Ou lancer un daemon Docker privilégié
+#
+# Kaniko:
+# - Pas besoin de daemon Docker
+# - Exécute les instructions Dockerfile en userspace
+# - Plus sécurisé pour les environnements CI/CD
+#
+# Limitations:
+# - Certaines instructions Dockerfile ne sont pas supportées
+# - Performance légèrement inférieure à Docker natif

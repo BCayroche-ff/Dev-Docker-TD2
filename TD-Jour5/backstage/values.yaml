@@ -1,0 +1,91 @@
+# Configuration Backstage pour le TP TechMarket
+# Utilise l'image de démo officielle de Backstage
+
+backstage:
+  image:
+    registry: ghcr.io
+    repository: backstage/backstage
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # Configuration app-config.yaml intégrée
+  appConfig:
+    app:
+      title: TechMarket IDP
+      baseUrl: http://localhost:30000
+
+    organization:
+      name: TechMarket
+
+    auth:
+      environment: development
+      providers:
+        guest:
+          dangerouslyAllowOutsideDevelopment: true
+
+    backend:
+      baseUrl: http://localhost:30000
+      listen:
+        port: 7007
+      csp:
+        connect-src: ["'self'", 'http:', 'https:']
+      database:
+        client: better-sqlite3
+        connection: ':memory:'
+      reading:
+        allow:
+          - host: raw.githubusercontent.com
+
+    catalog:
+      rules:
+        - allow: [Component, System, API, Resource, Location, Template, Group, User, Domain]
+
+      # Exemples officiels Backstage (URLs raw GitHub - fichiers individuels)
+      locations:
+        # Components (services, websites, libraries)
+        - type: url
+          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/all-components.yaml
+
+        # APIs
+        - type: url
+          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/all-apis.yaml
+
+        # Systems
+        - type: url
+          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/all-systems.yaml
+
+        # Domains
+        - type: url
+          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/all-domains.yaml
+
+        # Resources
+        - type: url
+          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/all-resources.yaml
+
+        # Groupes et utilisateurs
+        - type: url
+          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/acme-corp.yaml
+
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+
+  # Commande de démarrage
+  command: ["node", "packages/backend", "--config", "app-config.yaml"]
+
+service:
+  type: NodePort
+  ports:
+    backend: 7007
+  nodePorts:
+    backend: "30000"
+
+postgresql:
+  enabled: false
+
+ingress:
+  enabled: false

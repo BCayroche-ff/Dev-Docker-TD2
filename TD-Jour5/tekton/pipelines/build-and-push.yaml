@@ -1,0 +1,174 @@
+# Pipeline: Build and Push
+# Pipeline complet pour builder, scanner et signer une image
+# Workflow: git-clone → kaniko-build → trivy-scan → cosign-sign
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: build-and-push
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+  annotations:
+    tekton.dev/displayName: "Build, Scan and Sign Pipeline"
+    tekton.dev/categories: "CI/CD"
+spec:
+  description: |
+    Pipeline CI/CD complet pour TechMarket.
+    Étapes:
+    1. Clone le code source depuis Git
+    2. Build l'image Docker avec Kaniko
+    3. Scanne l'image pour les vulnérabilités avec Trivy
+    4. Signe l'image avec Cosign
+
+    Ce pipeline intègre les bonnes pratiques de supply chain security.
+
+  # Paramètres du Pipeline
+  params:
+    - name: git-url
+      description: URL du repository Git
+      type: string
+    - name: git-revision
+      description: Branch ou tag à builder
+      type: string
+      default: main
+    - name: image-name
+      description: Nom de l'image à builder (registry/repo:tag)
+      type: string
+    - name: dockerfile-path
+      description: Chemin vers le Dockerfile
+      type: string
+      default: ./Dockerfile
+    - name: context-path
+      description: Contexte de build Docker
+      type: string
+      default: .
+    - name: scan-severity
+      description: Sévérités à scanner (CRITICAL,HIGH,MEDIUM,LOW)
+      type: string
+      default: "CRITICAL,HIGH"
+
+  # Workspaces partagés entre les Tasks
+  workspaces:
+    - name: shared-workspace
+      description: Workspace partagé pour le code source et les artefacts
+    - name: docker-credentials
+      description: Credentials Docker Registry
+      optional: true
+
+  # Tasks du Pipeline
+  tasks:
+    # Task 1: Clone le code source
+    - name: clone
+      taskRef:
+        name: git-clone
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+      workspaces:
+        - name: output
+          workspace: shared-workspace
+
+    # Task 2: Build l'image avec Kaniko
+    - name: build
+      taskRef:
+        name: kaniko-build
+      runAfter:
+        - clone
+      params:
+        - name: IMAGE
+          value: $(params.image-name)
+        - name: DOCKERFILE
+          value: $(params.dockerfile-path)
+        - name: CONTEXT
+          value: $(params.context-path)
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
+    # Task 3: Scan de sécurité avec Trivy
+    - name: scan
+      taskRef:
+        name: trivy-scan
+      runAfter:
+        - build
+      params:
+        - name: IMAGE
+          value: $(params.image-name)
+        - name: SEVERITY
+          value: $(params.scan-severity)
+        - name: EXIT_CODE
+          value: "0"  # Warning only pour le TP
+      workspaces:
+        - name: output
+          workspace: shared-workspace
+
+    # Task 4: Signature avec Cosign
+    - name: sign
+      taskRef:
+        name: cosign-sign
+      runAfter:
+        - scan
+      params:
+        - name: IMAGE
+          value: $(params.image-name)
+        - name: SIGNING_TYPE
+          value: keyless
+
+  # Résultats du Pipeline
+  results:
+    - name: commit-sha
+      description: SHA du commit buildé
+      value: $(tasks.clone.results.commit)
+    - name: image-url
+      description: URL de l'image buildée
+      value: $(tasks.build.results.IMAGE_URL)
+    - name: vulnerabilities
+      description: Nombre de vulnérabilités trouvées
+      value: $(tasks.scan.results.VULNERABILITIES_COUNT)
+    - name: signed
+      description: Image signée (true/false)
+      value: $(tasks.sign.results.SIGNED)
+
+  # Finalizers (cleanup, notifications)
+  finally:
+    - name: report
+      taskSpec:
+        steps:
+          - name: summary
+            image: alpine
+            script: |
+              #!/bin/sh
+              echo "======================================"
+              echo "Pipeline Build-and-Push Summary"
+              echo "======================================"
+              echo "Commit: $(params.git-revision)"
+              echo "Image: $(params.image-name)"
+              echo ""
+              echo "Tasks executed:"
+              echo "  1. git-clone: Clone source code"
+              echo "  2. kaniko-build: Build Docker image"
+              echo "  3. trivy-scan: Security vulnerability scan"
+              echo "  4. cosign-sign: Sign image"
+              echo "======================================"
+
+---
+# Note pédagogique: Structure d'un Pipeline Tekton
+#
+# Un Pipeline se compose de:
+# - params: Inputs configurables
+# - workspaces: Volumes partagés entre tasks
+# - tasks: Liste des tasks à exécuter
+# - results: Outputs du pipeline
+# - finally: Tasks exécutées en fin (succès ou échec)
+#
+# Dépendances entre tasks:
+# - runAfter: Exécuter après une task spécifique
+# - Par défaut: En parallèle si pas de dépendances
+#
+# Workflow de ce pipeline:
+#
+#   [clone] → [build] → [scan] → [sign]
+#                                    ↓
+#                               [report] (finally)

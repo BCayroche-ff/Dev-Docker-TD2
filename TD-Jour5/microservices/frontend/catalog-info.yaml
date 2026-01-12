@@ -1,0 +1,31 @@
+# catalog-info.yaml - Frontend TechMarket
+# Ce fichier déclare le service frontend dans le catalogue Backstage
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: frontend-app
+  description: |
+    Application React pour la marketplace TechMarket.
+    Interface utilisateur pour parcourir les produits et effectuer des achats.
+  annotations:
+    # Identifiant pour le plugin Kubernetes de Backstage
+    backstage.io/kubernetes-id: frontend-app
+    # Lien vers la documentation technique
+    backstage.io/techdocs-ref: dir:.
+  tags:
+    - react
+    - frontend
+    - web
+    - typescript
+  links:
+    - url: http://localhost:30080
+      title: Application
+      icon: web
+spec:
+  type: website
+  lifecycle: production
+  owner: team-frontend
+  system: techmarket-platform
+  # Le frontend dépend du backend pour les données
+  dependsOn:
+    - component:default/backend-api

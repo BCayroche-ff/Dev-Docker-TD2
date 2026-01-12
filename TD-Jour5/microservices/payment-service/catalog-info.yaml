@@ -1,0 +1,106 @@
+# catalog-info.yaml - Payment Service TechMarket
+# Ce fichier déclare le service de paiement dans le catalogue Backstage
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: payment-service
+  description: |
+    Service critique de traitement des paiements TechMarket.
+    Gère les transactions financières avec haute disponibilité (3 replicas min).
+    SLO: 99.9% disponibilité, P95 latency < 500ms
+  annotations:
+    backstage.io/kubernetes-id: payment-service
+    backstage.io/techdocs-ref: dir:.
+    # Annotation pour indiquer que c'est un service critique
+    techmarket.io/criticality: high
+    techmarket.io/pagerduty: team-payments-oncall
+  tags:
+    - nodejs
+    - express
+    - payments
+    - critical
+    - pci-dss
+  links:
+    - url: http://localhost:30082
+      title: Service Endpoint
+      icon: api
+    - url: http://localhost:30082/metrics
+      title: Prometheus Metrics
+      icon: dashboard
+spec:
+  type: service
+  lifecycle: production
+  owner: team-payments
+  system: techmarket-platform
+  # APIs exposées
+  providesApis:
+    - payment-api
+
+---
+# Définition de l'API Payment
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: payment-api
+  description: API de traitement des paiements TechMarket
+spec:
+  type: openapi
+  lifecycle: production
+  owner: team-payments
+  definition: |
+    openapi: 3.0.0
+    info:
+      title: Payment API
+      version: 1.0.0
+      description: API critique pour le traitement des paiements
+    paths:
+      /process:
+        post:
+          summary: Traiter un paiement
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    productId:
+                      type: string
+                    amount:
+                      type: number
+                    userId:
+                      type: string
+          responses:
+            '200':
+              description: Paiement réussi
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      success:
+                        type: boolean
+                      transactionId:
+                        type: string
+            '400':
+              description: Paramètres invalides
+            '500':
+              description: Erreur de traitement
+      /transactions:
+        get:
+          summary: Historique des transactions
+          responses:
+            '200':
+              description: Liste des 20 dernières transactions
+      /health:
+        get:
+          summary: Health check
+          responses:
+            '200':
+              description: Service healthy
+      /metrics:
+        get:
+          summary: Métriques Prometheus
+          responses:
+            '200':
+              description: Métriques au format Prometheus
