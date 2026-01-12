@@ -366,20 +366,126 @@ explain "Le Chaos Engineering consiste à provoquer des pannes contrôlées"
 explain "pour valider la résilience du système AVANT qu'une vraie panne survienne."
 echo ""
 
-step "Vérification de Litmus"
-run_cmd "kubectl get pods -n litmus 2>/dev/null | head -10 || echo 'Litmus non installé'"
-
-step "Experiment configuré : pod-delete"
-explain "Cet experiment tue aléatoirement des pods du payment-service"
-explain "pour valider que Kubernetes les recrée correctement."
-echo ""
-if [ -f "litmus/pod-delete-experiment.yaml" ]; then
-    success "Experiment pod-delete configuré"
-    echo ""
-    echo -e "${CYAN}Pour lancer l'experiment :${NC}"
-    show_cmd "kubectl apply -f litmus/pod-delete-experiment.yaml"
+step "Vérification de Litmus Operator"
+if kubectl get deployment chaos-operator-ce -n litmus &>/dev/null; then
+    success "Litmus Operator installé"
+    kubectl get pods -n litmus -l name=chaos-operator 2>/dev/null
 else
-    error "Fichier experiment manquant"
+    echo -e "${YELLOW}⚠ Litmus Operator non installé${NC}"
+    echo "  Installation avec: kubectl apply -f https://litmuschaos.github.io/litmus/litmus-operator-v2.14.0.yaml"
+fi
+echo ""
+
+step "État actuel du payment-service"
+echo ""
+echo -e "${CYAN}Pods payment-service AVANT le chaos :${NC}"
+kubectl get pods -n techmarket -l app=payment-service 2>/dev/null || echo "Namespace techmarket non trouvé"
+echo ""
+
+if [ -f "litmus/pod-delete-experiment.yaml" ]; then
+    read -p "Voulez-vous lancer le Chaos Experiment maintenant ? (o/N) " -n 1 -r
+    echo ""
+
+    if [[ $REPLY =~ ^[Oo]$ ]]; then
+        echo ""
+        step "Lancement du Chaos Experiment : pod-delete"
+        explain "L'experiment va supprimer des pods du payment-service pendant 30 secondes"
+        echo ""
+
+        # Nettoyer les anciennes ressources
+        kubectl delete chaosengine payment-service-chaos -n techmarket 2>/dev/null || true
+        kubectl delete chaosresult -n techmarket --all 2>/dev/null || true
+        sleep 2
+
+        # Lancer l'experiment
+        show_cmd "kubectl apply -f litmus/pod-delete-experiment.yaml"
+        kubectl apply -f litmus/pod-delete-experiment.yaml
+        echo ""
+
+        # Attendre le démarrage
+        echo -e "${YELLOW}Attente du démarrage du chaos runner...${NC}"
+        sleep 8
+
+        # Observer les pods pendant le chaos
+        echo ""
+        echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║  OBSERVATION DU CHAOS EN TEMPS RÉEL (40 secondes)             ║${NC}"
+        echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+
+        for i in $(seq 1 8); do
+            timestamp=$(date +%H:%M:%S)
+            echo -e "${YELLOW}[$timestamp] Observation T+$((i*5))s${NC}"
+            kubectl get pods -n techmarket -l app=payment-service --no-headers 2>/dev/null | while read line; do
+                name=$(echo $line | awk '{print $1}')
+                status=$(echo $line | awk '{print $3}')
+                age=$(echo $line | awk '{print $5}')
+                if [[ "$status" == "Terminating" ]]; then
+                    echo -e "  ${RED}✗ $name - $status ($age)${NC}"
+                elif [[ "$status" == "Running" ]]; then
+                    ready=$(echo $line | awk '{print $2}')
+                    if [[ "$ready" == "1/1" ]]; then
+                        echo -e "  ${GREEN}✓ $name - $status ($age)${NC}"
+                    else
+                        echo -e "  ${YELLOW}◐ $name - $status $ready ($age)${NC}"
+                    fi
+                else
+                    echo -e "  ${YELLOW}? $name - $status ($age)${NC}"
+                fi
+            done
+            echo ""
+            sleep 5
+        done
+
+        # Afficher le résultat
+        echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║  RÉSULTAT DU CHAOS EXPERIMENT                                 ║${NC}"
+        echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+
+        # Attendre le résultat
+        sleep 5
+
+        result=$(kubectl get chaosresult -n techmarket -o jsonpath='{.items[0].status.experimentStatus.verdict}' 2>/dev/null || echo "Pending")
+        phase=$(kubectl get chaosresult -n techmarket -o jsonpath='{.items[0].status.experimentStatus.phase}' 2>/dev/null || echo "Running")
+
+        echo -e "  Phase   : ${BOLD}$phase${NC}"
+        echo -e "  Verdict : ${BOLD}$result${NC}"
+        echo ""
+
+        if [[ "$result" == "Pass" ]]; then
+            success "CHAOS EXPERIMENT RÉUSSI !"
+            echo ""
+            echo -e "  ${GREEN}✓ Les pods ont été supprimés par Litmus${NC}"
+            echo -e "  ${GREEN}✓ Kubernetes a recréé les pods automatiquement${NC}"
+            echo -e "  ${GREEN}✓ Le service payment-service est resté disponible${NC}"
+        elif [[ "$result" == "Fail" ]]; then
+            error "CHAOS EXPERIMENT ÉCHOUÉ"
+            echo "  Le système n'a pas répondu correctement à la panne simulée"
+        else
+            echo -e "${YELLOW}⚠ Experiment en cours ou résultat non disponible${NC}"
+            echo "  Vérifiez avec: kubectl get chaosresult -n techmarket"
+        fi
+
+        echo ""
+        step "État final du payment-service"
+        kubectl get pods -n techmarket -l app=payment-service
+        echo ""
+
+        # Afficher les détails du résultat
+        step "Détails du ChaosResult"
+        kubectl describe chaosresult -n techmarket 2>/dev/null | grep -A15 "Status:" | head -20 || echo "Pas de résultat disponible"
+
+    else
+        echo ""
+        echo -e "${CYAN}Experiment non lancé. Pour le lancer manuellement :${NC}"
+        show_cmd "kubectl apply -f litmus/pod-delete-experiment.yaml"
+        echo ""
+        echo -e "${CYAN}Pour observer les pods pendant le chaos :${NC}"
+        show_cmd "watch kubectl get pods -n techmarket -l app=payment-service"
+    fi
+else
+    error "Fichier litmus/pod-delete-experiment.yaml manquant"
 fi
 
 pause

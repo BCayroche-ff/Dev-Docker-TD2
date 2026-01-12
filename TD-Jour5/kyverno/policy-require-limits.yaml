@@ -22,7 +22,7 @@ spec:
           - resources:
               kinds:
                 - Pod
-      # Exclure les namespaces système
+      # Exclure les namespaces système et les pods Litmus
       exclude:
         any:
           - resources:
@@ -32,6 +32,16 @@ spec:
                 - backstage
                 - litmus
                 - tekton-pipelines
+                - tekton-pipelines-resolvers
+          # Exclure les runners Litmus (qui tournent dans techmarket)
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/part-of: litmus
+          - resources:
+              names:
+                - "*-runner"
+                - "*-chaos-*"
       validate:
         message: |
           Tous les containers doivent avoir des resource limits définis.

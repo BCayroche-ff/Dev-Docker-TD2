@@ -81,8 +81,8 @@ spec:
       - apiGroups: ["litmuschaos.io"]
         resources: ["chaosresults"]
         verbs: ["create", "patch", "update"]
-    image: "litmuschaos/go-runner:latest"
-    imagePullPolicy: Always
+    image: "litmuschaos/go-runner:3.0.0"
+    imagePullPolicy: IfNotPresent
     args:
       - -c
       - ./experiments -name pod-delete
