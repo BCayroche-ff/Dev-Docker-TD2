@@ -22,6 +22,12 @@ backstage:
       providers:
         guest:
           dangerouslyAllowOutsideDevelopment: true
+          signInResolver:
+            enabled: true
+
+    # Permissions - autoriser tout pour le TP
+    permission:
+      enabled: false
 
     backend:
       baseUrl: http://localhost:30000
@@ -35,36 +41,34 @@ backstage:
       reading:
         allow:
           - host: raw.githubusercontent.com
+          - host: github.com
+
+    # Intégration GitHub pour le scaffolder
+    integrations:
+      github:
+        - host: github.com
 
     catalog:
       rules:
         - allow: [Component, System, API, Resource, Location, Template, Group, User, Domain]
 
-      # Exemples officiels Backstage (URLs raw GitHub - fichiers individuels)
+      # Catalogue TechMarket - Services réels depuis GitHub
       locations:
-        # Components (services, websites, libraries)
+        # Frontend React
         - type: url
-          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/all-components.yaml
+          target: https://raw.githubusercontent.com/BCayroche-ff/Dev-Docker-TD2/TD-J5/TD-Jour5/microservices/frontend/catalog-info.yaml
 
-        # APIs
+        # Backend API
         - type: url
-          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/all-apis.yaml
+          target: https://raw.githubusercontent.com/BCayroche-ff/Dev-Docker-TD2/TD-J5/TD-Jour5/microservices/backend/catalog-info.yaml
 
-        # Systems
+        # Payment Service
         - type: url
-          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/all-systems.yaml
+          target: https://raw.githubusercontent.com/BCayroche-ff/Dev-Docker-TD2/TD-J5/TD-Jour5/microservices/payment-service/catalog-info.yaml
 
-        # Domains
+        # Template Golden Path - Nouveau service Node.js
         - type: url
-          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/all-domains.yaml
-
-        # Resources
-        - type: url
-          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/all-resources.yaml
-
-        # Groupes et utilisateurs
-        - type: url
-          target: https://raw.githubusercontent.com/backstage/backstage/master/packages/catalog-model/examples/acme-corp.yaml
+          target: https://raw.githubusercontent.com/BCayroche-ff/Dev-Docker-TD2/TD-J5/TD-Jour5/backstage/template-nodejs-service.yaml
 
   resources:
     requests:

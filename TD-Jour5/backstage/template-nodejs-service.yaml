@@ -86,7 +86,7 @@ spec:
       name: Générer la structure du projet
       action: fetch:template
       input:
-        url: ./skeleton
+        url: https://github.com/BCayroche-ff/Dev-Docker-TD2/tree/TD-J5/TD-Jour5/backstage/skeleton
         values:
           serviceName: ${{ parameters.serviceName }}
           description: ${{ parameters.description }}
