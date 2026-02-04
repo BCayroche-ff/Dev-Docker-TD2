@@ -1,0 +1,35 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signature
+  annotations:
+    policies.kyverno.io/title: Verify Image Signature
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/description: >-
+      Verifie que toutes les images deployes dans cloudshop-prod
+      sont signees avec Cosign.
+spec:
+  validationFailureAction: Enforce
+  background: false
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: check-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - cloudshop-prod
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/abenhamdi/cloudshop/*"
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      # Remplacer par le contenu de cosign.pub
+                      -----END PUBLIC KEY-----
