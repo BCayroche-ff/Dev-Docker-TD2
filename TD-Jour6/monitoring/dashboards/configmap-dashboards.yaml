@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-cloudshop
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  cloudshop-overview.json: |
+    # Import from monitoring/dashboards/cloudshop-overview.json
+  slo-dashboard.json: |
+    # Import from monitoring/dashboards/slo-dashboard.json

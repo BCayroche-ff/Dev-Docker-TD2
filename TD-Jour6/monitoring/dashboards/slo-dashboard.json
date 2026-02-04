@@ -1,0 +1,98 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "cloudshop-slo",
+    "title": "CloudShop - SLO Monitoring",
+    "tags": ["cloudshop", "slo", "sre"],
+    "timezone": "browser",
+    "refresh": "1m",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Availability SLO (target: 99.9%)",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "(sum(rate(http_requests_total{status!~\"5..\",namespace=\"cloudshop-prod\"}[30d])) / sum(rate(http_requests_total{namespace=\"cloudshop-prod\"}[30d]))) * 100",
+            "legendFormat": "Availability"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 99.0, "color": "yellow" },
+                { "value": 99.9, "color": "green" }
+              ]
+            },
+            "min": 95,
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Error Budget Remaining (%)",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+        "targets": [
+          {
+            "expr": "(1 - ((1 - (sum(rate(http_requests_total{status!~\"5..\",namespace=\"cloudshop-prod\"}[30d])) / sum(rate(http_requests_total{namespace=\"cloudshop-prod\"}[30d])))) / (1 - 0.999))) * 100",
+            "legendFormat": "Budget Remaining"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 25, "color": "yellow" },
+                { "value": 50, "color": "green" }
+              ]
+            },
+            "min": 0,
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Burn Rate (1h window)",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "(sum(rate(http_requests_total{status=~\"5..\",namespace=\"cloudshop-prod\"}[1h])) / sum(rate(http_requests_total{namespace=\"cloudshop-prod\"}[1h]))) / (1 - 0.999)",
+            "legendFormat": "Burn Rate"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Downtime Budget Remaining (minutes)",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "43.2 * (1 - ((1 - (sum(rate(http_requests_total{status!~\"5..\",namespace=\"cloudshop-prod\"}[30d])) / sum(rate(http_requests_total{namespace=\"cloudshop-prod\"}[30d])))) / (1 - 0.999)))",
+            "legendFormat": "Minutes remaining"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Latency SLI - P95 (target < 500ms)",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 18, "x": 6, "y": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"cloudshop-prod\"}[5m])) by (le)) * 1000",
+            "legendFormat": "P95 Latency (ms)"
+          }
+        ]
+      }
+    ]
+  }
+}
