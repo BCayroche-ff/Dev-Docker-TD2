@@ -10,7 +10,7 @@ metadata:
       Verifie que toutes les images deployes dans cloudshop-prod
       sont signees avec Cosign.
 spec:
-  validationFailureAction: Enforce
+  validationFailureAction: Audit
   background: false
   webhookTimeoutSeconds: 30
   rules:

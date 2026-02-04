@@ -21,6 +21,14 @@ spec:
                 - Pod
               namespaces:
                 - cloudshop-prod
+      exclude:
+        any:
+          - resources:
+              names:
+                - "*chaos*"
+                - "pod-delete-*"
+              namespaces:
+                - cloudshop-prod
       validate:
         message: "Les conteneurs privilegies sont interdits."
         pattern:

@@ -35,6 +35,6 @@ spec:
                   responseCode: "200"
             mode: Continuous
             runProperties:
-              probeTimeout: 5
-              interval: 2
+              probeTimeout: "5s"
+              interval: "2s"
               retry: 1

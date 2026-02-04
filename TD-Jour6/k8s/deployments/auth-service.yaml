@@ -80,4 +80,5 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
+            privileged: false
             allowPrivilegeEscalation: false

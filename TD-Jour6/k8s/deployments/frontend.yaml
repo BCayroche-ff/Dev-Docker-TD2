@@ -22,7 +22,7 @@ spec:
           image: cloudshop/frontend:v1.0.0
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 80
+            - containerPort: 8080
               name: http
           resources:
             requests:
@@ -33,17 +33,18 @@ spec:
               cpu: "150m"
           livenessProbe:
             httpGet:
-              path: /
-              port: 80
+              path: /health
+              port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /
-              port: 80
+              path: /health
+              port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5
           securityContext:
             runAsNonRoot: true
             runAsUser: 101
+            privileged: false
             allowPrivilegeEscalation: false

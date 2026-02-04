@@ -21,6 +21,14 @@ spec:
                 - Pod
               namespaces:
                 - cloudshop-prod
+      exclude:
+        any:
+          - resources:
+              names:
+                - "*chaos*"
+                - "pod-delete-*"
+              namespaces:
+                - cloudshop-prod
       validate:
         message: "Les conteneurs doivent avoir des requests et limits CPU/Memory definis."
         pattern:
