@@ -20,7 +20,7 @@ spec:
       containers:
         - name: products-api
           image: cloudshop/products-api:v1.0.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8082
               name: http

@@ -20,7 +20,7 @@ spec:
       containers:
         - name: orders-api
           image: cloudshop/orders-api:v1.0.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8083
               name: http

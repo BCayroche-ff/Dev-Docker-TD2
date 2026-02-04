@@ -20,7 +20,7 @@ spec:
       containers:
         - name: frontend
           image: cloudshop/frontend:v1.0.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
               name: http
