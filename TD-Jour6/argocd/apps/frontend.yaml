@@ -8,8 +8,8 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/abenhamdi/Master-M2-FullStack.git
-    targetRevision: HEAD
+    repoURL: https://github.com/BCayroche-ff/Dev-Docker-TD2.git
+    targetRevision: TD-J6
     path: TD-Jour6/k8s
     directory:
       include: '{deployments/frontend.yaml,ingress}/**/*.yaml'

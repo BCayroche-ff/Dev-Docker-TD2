@@ -24,7 +24,7 @@ spec:
                 - cloudshop-prod
       verifyImages:
         - imageReferences:
-            - "ghcr.io/abenhamdi/cloudshop/*"
+            - "ghcr.io/bcayroche-ff/dev-docker-td2/*"
           attestors:
             - count: 1
               entries:
