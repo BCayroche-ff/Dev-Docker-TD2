@@ -52,23 +52,24 @@ app.get('/metrics', async (req, res) => {
   res.end(await register.metrics());
 });
 
-// Proxy routes
+// Proxy routes (pathFilter pour que http-proxy-middleware gere le routing, pas Express)
 app.use('/api/auth', createProxyMiddleware({
   target: AUTH_SERVICE_URL,
   changeOrigin: true,
   pathRewrite: { '^/api/auth': '' },
+  on: { proxyReq: (proxyReq, req) => { proxyReq.path = req.originalUrl.replace(/^\/api\/auth/, '') || '/'; } },
 }));
 
 app.use('/api/products', createProxyMiddleware({
   target: PRODUCTS_SERVICE_URL,
   changeOrigin: true,
-  pathRewrite: { '^/api/products': '/products' },
+  on: { proxyReq: (proxyReq, req) => { proxyReq.path = req.originalUrl.replace(/^\/api\/products/, '/products'); } },
 }));
 
 app.use('/api/orders', createProxyMiddleware({
   target: ORDERS_SERVICE_URL,
   changeOrigin: true,
-  pathRewrite: { '^/api/orders': '/orders' },
+  on: { proxyReq: (proxyReq, req) => { proxyReq.path = req.originalUrl.replace(/^\/api\/orders/, '/orders'); } },
 }));
 
 app.listen(PORT, '0.0.0.0', () => {
