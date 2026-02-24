@@ -7,7 +7,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production
-FROM nginx:1.27-alpine
+FROM nginx:1.28-alpine
 
 # Prepare directories for non-root nginx
 RUN mkdir -p /var/cache/nginx/client_temp \

@@ -1,6 +1,6 @@
 module cloudshop/orders-api
 
-go 1.23
+go 1.24
 
 require (
 	github.com/lib/pq v1.10.9

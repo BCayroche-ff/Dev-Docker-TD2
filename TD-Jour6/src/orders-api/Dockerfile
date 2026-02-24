@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 WORKDIR /app
 
 COPY go.mod go.sum ./
@@ -9,7 +9,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o orders-api .
 
 # Stage 2: Runtime
-FROM alpine:3.20
+FROM alpine:3.21
 
 RUN apk --no-cache add ca-certificates
 
