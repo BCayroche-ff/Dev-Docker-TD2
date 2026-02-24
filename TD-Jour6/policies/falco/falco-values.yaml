@@ -1,0 +1,65 @@
+driver:
+  kind: modern_ebpf
+
+falcosidekick:
+  enabled: false
+
+collectors:
+  enabled: true
+
+falco:
+  watch_config_files: false
+  json_output: true
+
+customRules:
+  cloudshop-rules.yaml: |-
+    - rule: Suspicious Shell in Container
+      desc: Detecte l'execution de shell dans un conteneur CloudShop
+      condition: >
+        spawned_process and
+        container and
+        proc.name in (bash, sh, zsh, echo)
+      output: >
+        Shell execute dans un conteneur
+        (user=%user.name container=%container.name image=%container.image.repository
+        command=%proc.cmdline)
+      priority: WARNING
+      tags: [container, shell, cloudshop]
+
+    - rule: Sensitive File Access
+      desc: Detecte l'acces a des fichiers sensibles
+      condition: >
+        open_read and
+        container and
+        fd.name in (/etc/shadow, /etc/passwd, /etc/sudoers)
+      output: >
+        Acces a un fichier sensible detecte
+        (user=%user.name container=%container.name file=%fd.name command=%proc.cmdline)
+      priority: CRITICAL
+      tags: [filesystem, security]
+
+    - rule: Write Below Root
+      desc: Detecte une ecriture dans un repertoire systeme
+      condition: >
+        open_write and
+        container and
+        fd.name startswith /root and
+        not proc.name in (dpkg, rpm, yum)
+      output: >
+        Ecriture detectee dans /root
+        (user=%user.name container=%container.name file=%fd.name command=%proc.cmdline)
+      priority: ERROR
+      tags: [filesystem, container]
+
+    - rule: Unexpected Network Connection
+      desc: Detecte une connexion reseau inattendue
+      condition: >
+        outbound and
+        container and
+        fd.sport != 80 and fd.sport != 443 and fd.sport != 8080 and
+        not proc.name in (curl, wget)
+      output: >
+        Connexion reseau inattendue depuis un conteneur
+        (container=%container.name connection=%fd.name command=%proc.cmdline)
+      priority: WARNING
+      tags: [network, container]
